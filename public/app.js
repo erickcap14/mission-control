@@ -620,23 +620,37 @@ function ToolkitPanel({ toolkitData }) {
       h('div', { className: 'modal-section-label' }, 'skills & commands'),
       h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px' } },
         (skills && skills.length > 0)
-          ? skills.length + ' unique skills across all projects'
-          : 'no custom skills found'
+          ? skills.filter(s => s.type === 'skill').length + ' skills · ' +
+            skills.filter(s => s.type === 'hook').length + ' hooks'
+          : 'no custom skills or hooks found'
       ),
       skills && skills.length > 0
         ? h('table', { className: 'usage-model-table' },
             h('thead', null,
               h('tr', null,
                 h('th', null, 'Name'),
+                h('th', null, 'Type'),
                 h('th', null, 'Description'),
-                h('th', null, 'Sources')
+                h('th', null, 'Sources'),
+                h('th', { style: { textAlign: 'right' } }, 'Uses')
               )
             ),
             h('tbody', null,
               ...skills.map((sk, i) =>
                 h('tr', { key: i },
                   h('td', null,
-                    h('span', { style: { fontFamily: "'IBM Plex Mono', monospace", color: '#00d966', fontSize: '11px' } }, sk.name)
+                    h('span', { style: { fontFamily: "'IBM Plex Mono', monospace", color: sk.type === 'hook' ? '#ffaa00' : '#00d966', fontSize: '11px' } }, sk.name)
+                  ),
+                  h('td', null,
+                    h('span', {
+                      style: {
+                        fontSize: '10px',
+                        padding: '1px 5px',
+                        border: '1px solid ' + (sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : '#555'),
+                        color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : '#888',
+                        fontFamily: "'IBM Plex Mono', monospace",
+                      }
+                    }, sk.type || 'command')
                   ),
                   h('td', { style: { color: '#888', fontSize: '11px' } }, truncate(sk.description, 50)),
                   h('td', null,
@@ -650,6 +664,9 @@ function ToolkitPanel({ toolkitData }) {
                         }
                       }, src + (j < sk.sources.length - 1 ? ',' : ''))
                     )
+                  ),
+                  h('td', { style: { textAlign: 'right', color: sk.usageCount > 0 ? '#00d966' : '#333', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace" } },
+                    sk.usageCount == null ? '—' : sk.usageCount
                   )
                 )
               )
