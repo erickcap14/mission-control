@@ -559,6 +559,16 @@ async function createApp(config, sessionManager) {
     }
   });
 
+  app.get('/api/toolkit', async (_req, res) => {
+    try {
+      const { scanToolkit } = await import('./lib/toolkitScanner.js');
+      const data = await scanToolkit(config);
+      res.json(data);
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
+
   app.post('/api/restore/:id', async (req, res) => {
     try {
       const { id } = req.params;

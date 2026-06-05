@@ -607,6 +607,104 @@ function UsageDashboard({ usageStats }) {
   );
 }
 
+// ── Toolkit Panel ────────────────────────────────────────────
+
+function ToolkitPanel({ toolkitData }) {
+  if (!toolkitData) return h('div', { className: 'loading' }, 'Loading...');
+
+  const { skills, plugins, globalSettings } = toolkitData;
+
+  return h('div', { className: 'usage-dashboard' },
+
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'modal-section-label' }, 'skills & commands'),
+      h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px' } },
+        (skills && skills.length > 0)
+          ? skills.length + ' unique skills across all projects'
+          : 'no custom skills found'
+      ),
+      skills && skills.length > 0
+        ? h('table', { className: 'usage-model-table' },
+            h('thead', null,
+              h('tr', null,
+                h('th', null, 'Name'),
+                h('th', null, 'Description'),
+                h('th', null, 'Sources')
+              )
+            ),
+            h('tbody', null,
+              ...skills.map((sk, i) =>
+                h('tr', { key: i },
+                  h('td', null,
+                    h('span', { style: { fontFamily: "'IBM Plex Mono', monospace", color: '#00d966', fontSize: '11px' } }, sk.name)
+                  ),
+                  h('td', { style: { color: '#888', fontSize: '11px' } }, truncate(sk.description, 50)),
+                  h('td', null,
+                    sk.sources && sk.sources.map((src, j) =>
+                      h('span', {
+                        key: j,
+                        style: {
+                          marginRight: '4px',
+                          color: src === 'global' ? '#ffaa00' : '#555',
+                          fontSize: '11px'
+                        }
+                      }, src + (j < sk.sources.length - 1 ? ',' : ''))
+                    )
+                  )
+                )
+              )
+            )
+          )
+        : null
+    ),
+
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'modal-section-label' }, 'plugins'),
+      plugins && plugins.length > 0
+        ? h('table', { className: 'usage-model-table' },
+            h('thead', null,
+              h('tr', null,
+                h('th', null, 'Name'),
+                h('th', null, 'Scope'),
+                h('th', null, 'Version'),
+                h('th', null, 'Installed')
+              )
+            ),
+            h('tbody', null,
+              ...plugins.map((pl, i) =>
+                h('tr', { key: i },
+                  h('td', { style: { fontFamily: "'IBM Plex Mono', monospace", color: '#00d966', fontSize: '11px' } }, pl.name),
+                  h('td', { style: { color: '#888', fontSize: '11px' } }, pl.scope || '—'),
+                  h('td', { style: { color: '#888', fontSize: '11px' } }, pl.version || '—'),
+                  h('td', { style: { color: '#555', fontSize: '11px' } }, fmtDate(pl.installedAt))
+                )
+              )
+            )
+          )
+        : h('div', { style: { color: '#555', fontSize: '11px' } }, 'no installed plugins')
+    ),
+
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'modal-section-label' }, 'global settings'),
+      h('div', { style: { color: '#555', fontSize: '10px', marginBottom: '8px' } }, '~/.claude/settings.json'),
+      h('pre', {
+        style: {
+          background: '#0a0e17',
+          padding: '12px',
+          fontSize: '11px',
+          overflowX: 'auto',
+          color: '#888',
+          maxHeight: '400px',
+          overflowY: 'auto',
+          margin: 0,
+          fontFamily: "'IBM Plex Mono', monospace",
+          lineHeight: '1.5'
+        }
+      }, JSON.stringify(globalSettings, null, 2))
+    )
+  );
+}
+
 // ── Main App ─────────────────────────────────────────────────
 
 function App() {
@@ -622,6 +720,7 @@ function App() {
   const [showCharts, setShowCharts] = useState(false);
   const [view, setView] = useState('sessions');
   const [usageStats, setUsageStats] = useState(null);
+  const [toolkitData, setToolkitData] = useState(null);
   const [dailyStats, setDailyStats] = useState([]);
   const [monthlyStats, setMonthlyStats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -669,6 +768,15 @@ function App() {
       const res = await fetch(`${API}/usage-stats`);
       if (res.ok) setUsageStats(await res.json());
     } catch (e) { /* silent */ }
+  }, []);
+
+  const fetchToolkit = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/toolkit`);
+      if (res.ok) setToolkitData(await res.json());
+    } catch (err) {
+      console.error('toolkit fetch failed', err);
+    }
   }, []);
 
   const refreshData = useCallback(async () => {
@@ -879,7 +987,14 @@ function App() {
             setView('usage');
             if (!usageStats) fetchUsageStats();
           }
-        }, 'Usage')
+        }, 'Usage'),
+        h('button', {
+          className: 'nav-btn' + (view === 'toolkit' ? ' active' : ''),
+          onClick: () => {
+            setView('toolkit');
+            if (!toolkitData) fetchToolkit();
+          }
+        }, 'Toolkit')
       ),
       h('div', { className: 'stat-item' },
         h('div', { className: 'stat-label' }, selectedProject ? 'Project' : 'Projects'),
@@ -908,6 +1023,10 @@ function App() {
     view === 'usage'
       ? h('div', { className: 'main-layout' },
           h('div', { className: 'content' }, h(UsageDashboard, { usageStats }))
+        )
+      : view === 'toolkit'
+      ? h('div', { className: 'main-layout' },
+          h('div', { className: 'content' }, h(ToolkitPanel, { toolkitData }))
         )
       : h('div', { className: 'main-layout' },
 
