@@ -617,12 +617,13 @@ function ToolkitPanel({ toolkitData }) {
   return h('div', { className: 'usage-dashboard' },
 
     h('div', { className: 'usage-card' },
-      h('div', { className: 'modal-section-label' }, 'commands & hooks'),
+      h('div', { className: 'modal-section-label' }, 'skills, commands & hooks'),
       h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px' } },
         (skills && skills.length > 0)
-          ? skills.filter(s => s.type === 'command').length + ' commands · ' +
+          ? skills.filter(s => s.type === 'skill').length + ' skills · ' +
+            skills.filter(s => s.type === 'command').length + ' commands · ' +
             skills.filter(s => s.type === 'hook').length + ' hooks'
-          : 'no custom commands or hooks found'
+          : 'no skills, commands, or hooks found'
       ),
       skills && skills.length > 0
         ? h('table', { className: 'usage-model-table' },
@@ -639,15 +640,15 @@ function ToolkitPanel({ toolkitData }) {
               ...skills.map((sk, i) =>
                 h('tr', { key: i },
                   h('td', null,
-                    h('span', { style: { fontFamily: "'IBM Plex Mono', monospace", color: sk.type === 'hook' ? '#ffaa00' : '#00d966', fontSize: '11px' } }, sk.name)
+                    h('span', { style: { fontFamily: "'IBM Plex Mono', monospace", color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : sk.type === 'command' ? '#00b4d8' : '#888', fontSize: '11px' } }, sk.name)
                   ),
                   h('td', null,
                     h('span', {
                       style: {
                         fontSize: '10px',
                         padding: '1px 5px',
-                        border: '1px solid ' + (sk.type === 'hook' ? '#ffaa00' : sk.type === 'command' ? '#00d966' : '#555'),
-                        color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'command' ? '#00d966' : '#888',
+                        border: '1px solid ' + (sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : sk.type === 'command' ? '#00b4d8' : '#555'),
+                        color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : sk.type === 'command' ? '#00b4d8' : '#888',
                         fontFamily: "'IBM Plex Mono', monospace",
                       }
                     }, sk.type || 'command')
