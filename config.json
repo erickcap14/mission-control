@@ -3,6 +3,12 @@
   "claudeDir": "~/.claude",
   "port": 9000,
   "timeSavedMultiplier": 2.5,
+  "plan": {
+    "name": "Claude Code Pro",
+    "monthlyCostLimit": 20.00,
+    "billingDay": 2,
+    "paygAfterLimit": true
+  },
   "pricing": {
     "claude-opus-4-8": { "input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75 },
     "claude-opus-4-6": { "input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75 },

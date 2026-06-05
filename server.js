@@ -372,6 +372,108 @@ async function createApp(config, sessionManager) {
     }
   });
 
+  // Usage stats: current billing period breakdown
+  app.get('/api/usage-stats', async (_req, res) => {
+    try {
+      const cfg = sessionManager.config;
+      const billingDay = cfg.plan?.billingDay ?? 1;
+      const now = new Date();
+
+      // Current billing period start: most recent occurrence of billingDay
+      let periodStart = new Date(now.getFullYear(), now.getMonth(), billingDay);
+      if (periodStart > now) {
+        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, billingDay);
+      }
+      // Next reset: one month after periodStart
+      const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, billingDay);
+
+      const msUntilReset = periodEnd - now;
+      const daysRemaining = Math.floor(msUntilReset / (1000 * 60 * 60 * 24));
+      const hoursUntilReset = Math.floor(msUntilReset / (1000 * 60 * 60));
+      const minutesUntilReset = Math.floor((msUntilReset % (1000 * 60 * 60)) / (1000 * 60));
+
+      const allSessions = await sessionManager.getAllSessions();
+      const periodSessions = allSessions.filter(s => {
+        if (!s.startTime) return false;
+        const d = new Date(s.startTime);
+        return d >= periodStart && d < periodEnd;
+      });
+
+      const totalTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+      let totalCost = 0;
+      const byModel = {};
+      const dailyMap = {};
+
+      for (const s of periodSessions) {
+        const ti = s.tokens?.input || 0;
+        const to = s.tokens?.output || 0;
+        const tr = s.tokens?.cacheRead || 0;
+        const tw = s.tokens?.cacheWrite || 0;
+        const sessionTokens = ti + to + tr + tw;
+
+        totalTokens.input += ti;
+        totalTokens.output += to;
+        totalTokens.cacheRead += tr;
+        totalTokens.cacheWrite += tw;
+        totalCost += s.cost || 0;
+
+        const model = s.model || 'unknown';
+        if (!byModel[model]) byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
+        byModel[model].tokens += sessionTokens;
+        byModel[model].cost += s.cost || 0;
+        byModel[model].sessions++;
+
+        if (s.startTime) {
+          const dateKey = new Date(s.startTime).toISOString().slice(0, 10);
+          if (!dailyMap[dateKey]) dailyMap[dateKey] = { tokens: 0, cost: 0, sessions: 0 };
+          dailyMap[dateKey].tokens += sessionTokens;
+          dailyMap[dateKey].cost += s.cost || 0;
+          dailyMap[dateKey].sessions++;
+        }
+      }
+      totalTokens.total = totalTokens.input + totalTokens.output + totalTokens.cacheRead + totalTokens.cacheWrite;
+
+      const planLimit = cfg.plan?.monthlyCostLimit ?? null;
+      const includedCost = planLimit != null ? Math.min(totalCost, planLimit) : totalCost;
+      const overageCost = planLimit != null ? Math.max(0, totalCost - planLimit) : 0;
+      const usagePercent = planLimit != null ? Math.min((totalCost / planLimit) * 100, 100) : null;
+
+      // Burn rate: cost per day over the period so far
+      const daysElapsed = Math.max(1, (now - periodStart) / (1000 * 60 * 60 * 24));
+      const dailyBurnRate = totalCost / daysElapsed;
+      const daysUntilExhausted = planLimit != null && dailyBurnRate > 0
+        ? Math.max(0, (planLimit - totalCost) / dailyBurnRate)
+        : null;
+
+      const dailyBreakdown = Object.entries(dailyMap)
+        .map(([date, d]) => ({ date, ...d }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      res.json({
+        periodStart: periodStart.toISOString().slice(0, 10),
+        periodEnd: periodEnd.toISOString().slice(0, 10),
+        daysRemaining,
+        hoursUntilReset,
+        minutesUntilReset,
+        plan: cfg.plan || { name: 'Unknown', monthlyCostLimit: null, billingDay: 1, paygAfterLimit: false },
+        currentPeriod: {
+          totalTokens,
+          totalCost,
+          sessionCount: periodSessions.length,
+          byModel,
+          dailyBreakdown,
+        },
+        includedCost,
+        overageCost,
+        usagePercent,
+        dailyBurnRate,
+        daysUntilExhausted,
+      });
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
+
   // -------------------------------------------------------------------------
   // Other endpoints
   // -------------------------------------------------------------------------

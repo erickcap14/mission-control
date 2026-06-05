@@ -532,6 +532,214 @@
       text-transform: uppercase;
     }
 
+    /* ── VIEW NAV BUTTONS ── */
+    .top-bar-nav {
+      display: flex;
+      gap: 4px;
+      margin-left: 8px;
+    }
+    .nav-btn {
+      background: transparent;
+      border: 1px solid #1a1f3a;
+      color: #555;
+      padding: 4px 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      cursor: pointer;
+      text-transform: uppercase;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav-btn:hover { color: #e0e0e0; border-color: #333; }
+    .nav-btn.active { color: #00d966; border-color: #00d966; }
+
+    /* ── USAGE DASHBOARD ── */
+    .usage-dashboard {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding: 4px 0;
+    }
+    .usage-card {
+      background: #0f1229;
+      border: 1px solid #1a1f3a;
+      padding: 20px 24px;
+    }
+    .usage-card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 16px;
+    }
+    .usage-plan-name {
+      font-size: 13px;
+      color: #00d966;
+      letter-spacing: 1px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    .usage-plan-limit {
+      font-size: 11px;
+      color: #666;
+    }
+    .usage-card-title {
+      font-size: 10px;
+      color: #666;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .usage-progress-section { margin-bottom: 16px; }
+    .usage-progress-labels {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #666;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .usage-progress-track {
+      width: 100%;
+      height: 8px;
+      background: #1a1f3a;
+      overflow: hidden;
+    }
+    .usage-progress-fill {
+      height: 100%;
+      transition: width 0.4s ease;
+    }
+    .usage-projection {
+      font-size: 10px;
+      color: #555;
+      margin-top: 5px;
+      font-style: italic;
+    }
+    .usage-metrics-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .usage-metric {
+      background: #151a33;
+      border: 1px solid #1a1f3a;
+      padding: 10px 12px;
+    }
+    .usage-metric-label {
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .usage-metric-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #e0e0e0;
+    }
+    .usage-metric-value.cost { color: #ffaa00; }
+    .usage-reset-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      border-top: 1px solid #1a1f3a;
+      padding-top: 14px;
+    }
+    .usage-reset-label {
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+    .usage-countdown {
+      font-size: 18px;
+      font-weight: bold;
+      color: #00d966;
+      letter-spacing: 1px;
+    }
+    .usage-period-range {
+      font-size: 10px;
+      color: #444;
+      margin-left: auto;
+    }
+    .usage-token-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    .usage-token-cell {
+      background: #151a33;
+      border: 1px solid #1a1f3a;
+      padding: 10px 12px;
+    }
+    .usage-token-label {
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+    .usage-token-value {
+      font-size: 15px;
+      font-weight: bold;
+      color: #4ecdc4;
+    }
+    .usage-overage-card {
+      border-color: #ffaa00 !important;
+    }
+    .usage-overage-header {
+      font-size: 11px;
+      color: #ffaa00;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .usage-overage-amount {
+      font-size: 28px;
+      font-weight: bold;
+      color: #ff6b6b;
+      margin-bottom: 6px;
+    }
+    .usage-overage-desc {
+      font-size: 11px;
+      color: #888;
+    }
+    .usage-model-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .usage-model-table thead th {
+      text-align: left;
+      font-size: 9px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 6px 8px;
+      border-bottom: 1px solid #1a1f3a;
+    }
+    .usage-model-table tbody tr {
+      border-bottom: 1px solid #1a1f3a;
+    }
+    .usage-model-table tbody tr:last-child { border-bottom: none; }
+    .usage-model-table tbody td {
+      padding: 10px 8px;
+      font-size: 12px;
+    }
+    .usage-pct-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .usage-pct-fill {
+      height: 4px;
+      background: #00d966;
+      min-width: 2px;
+      max-width: 80px;
+      flex-shrink: 0;
+    }
+    .usage-pct-bar span { font-size: 11px; color: #888; }
+
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar {
       width: 4px;
