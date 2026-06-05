@@ -653,7 +653,14 @@ function ToolkitPanel({ toolkitData }) {
                       }
                     }, sk.type || 'command')
                   ),
-                  h('td', { style: { color: '#888', fontSize: '11px' } }, truncate(sk.description, 50)),
+                  h('td', { style: { color: '#888', fontSize: '11px' } },
+                    h('span', { className: 'tooltip-wrap' },
+                      truncate(sk.description, 50),
+                      sk.description && sk.description.length > 50
+                        ? h('span', { className: 'tooltip-box' }, sk.description)
+                        : null
+                    )
+                  ),
                   h('td', null,
                     sk.sources && sk.sources.map((src, j) =>
                       h('span', {
@@ -696,7 +703,14 @@ function ToolkitPanel({ toolkitData }) {
               ...mcpServers.map((srv, i) =>
                 h('tr', { key: i },
                   h('td', { style: { fontFamily: "'IBM Plex Mono', monospace", color: '#00b4d8', fontSize: '11px' } }, srv.name),
-                  h('td', { style: { color: '#888', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace" } }, truncate(srv.description, 60)),
+                  h('td', { style: { color: '#888', fontSize: '11px' } },
+                    h('span', { className: 'tooltip-wrap', style: { fontFamily: "'IBM Plex Mono', monospace" } },
+                      truncate(srv.description, 60),
+                      srv.description && srv.description.length > 60
+                        ? h('span', { className: 'tooltip-box' }, srv.description)
+                        : null
+                    )
+                  ),
                   h('td', null,
                     srv.sources && srv.sources.map((src, j) =>
                       h('span', {

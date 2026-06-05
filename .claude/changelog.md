@@ -79,6 +79,7 @@ This ensures transparency and traceability for all AI-executed workflows.
 - `.claude/settings.json`: added `Stop` hook for unpushed-commit warning; added `permissions.allow` allowlist for common Bash/MCP/Read patterns to reduce permission prompts
 - **Toolkit tab** (`mission_control-km7`) — new nav tab that surfaces the user's full Claude Code toolkit across all projects: `lib/toolkitScanner.js` module + `GET /api/toolkit` endpoint + `ToolkitPanel` React component with three sections: skills & commands (deduplicated across all projects under `scanPath`), installed plugins (from `~/.claude/plugins/installed_plugins.json`), and global settings (`~/.claude/settings.json` displayed as formatted JSON)
 - **Type and Uses columns in Toolkit** — Type badge (`skill` in green, `hook` in amber) distinguishes slash commands from automated hook triggers; Uses column shows real invocation count derived from scanning `<command-name>` tags in all 159 JSONL session files; hooks from `~/.claude/settings.json` and project `settings.json` files are included as rows with type "hook" and uses "—"
+- **Toolkit description tooltips** — hovering over a truncated description in the skills or MCP servers table shows the full text in a styled tooltip; implemented via CSS `.tooltip-wrap`/`.tooltip-box` with `position: absolute` to avoid overflow clipping
 
 ---
 

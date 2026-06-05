@@ -740,6 +740,35 @@
     }
     .usage-pct-bar span { font-size: 11px; color: #888; }
 
+    /* ── TOOLTIP ── */
+    .tooltip-wrap {
+      position: relative;
+      display: inline-block;
+      cursor: default;
+    }
+    .tooltip-wrap .tooltip-box {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: calc(100% + 6px);
+      z-index: 9999;
+      background: #1a1f3a;
+      border: 1px solid #2a2f5a;
+      color: #bbb;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      white-space: normal;
+      max-width: 320px;
+      min-width: 120px;
+      line-height: 1.5;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      pointer-events: none;
+    }
+    .tooltip-wrap:hover .tooltip-box {
+      display: block;
+    }
+
     /* ── SCROLLBAR ── */
     ::-webkit-scrollbar {
       width: 4px;
