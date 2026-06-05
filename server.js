@@ -372,20 +372,22 @@ async function createApp(config, sessionManager) {
     }
   });
 
-  // Usage stats: current billing period breakdown
+  // Usage stats: weekly period + 5-hour rolling window
   app.get('/api/usage-stats', async (_req, res) => {
     try {
       const cfg = sessionManager.config;
-      const billingDay = cfg.plan?.billingDay ?? 1;
       const now = new Date();
 
-      // Current billing period start: most recent occurrence of billingDay
-      let periodStart = new Date(now.getFullYear(), now.getMonth(), billingDay);
-      if (periodStart > now) {
-        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, billingDay);
-      }
-      // Next reset: one month after periodStart
-      const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, billingDay);
+      // ── Weekly period (Mon–Sun, resets on weeklyResetDay) ──────────────────
+      const resetDay = cfg.plan?.weeklyResetDay ?? 1; // 0=Sun, 1=Mon, ...
+      const nowDay = now.getDay();
+      // days since the last reset day
+      const daysSinceReset = ((nowDay - resetDay) + 7) % 7;
+      const periodStart = new Date(now);
+      periodStart.setDate(now.getDate() - daysSinceReset);
+      periodStart.setHours(0, 0, 0, 0);
+      const periodEnd = new Date(periodStart);
+      periodEnd.setDate(periodStart.getDate() + 7);
 
       const msUntilReset = periodEnd - now;
       const daysRemaining = Math.floor(msUntilReset / (1000 * 60 * 60 * 24));
@@ -393,81 +395,125 @@ async function createApp(config, sessionManager) {
       const minutesUntilReset = Math.floor((msUntilReset % (1000 * 60 * 60)) / (1000 * 60));
 
       const allSessions = await sessionManager.getAllSessions();
-      const periodSessions = allSessions.filter(s => {
+
+      // ── Aggregate helper ───────────────────────────────────────────────────
+      function aggregateSessions(sessions) {
+        const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+        let cost = 0;
+        const byModel = {};
+        const dailyMap = {};
+
+        for (const s of sessions) {
+          const ti = s.tokens?.input || 0;
+          const to = s.tokens?.output || 0;
+          const tr = s.tokens?.cacheRead || 0;
+          const tw = s.tokens?.cacheWrite || 0;
+          const sessionTokens = ti + to + tr + tw;
+
+          tokens.input += ti;
+          tokens.output += to;
+          tokens.cacheRead += tr;
+          tokens.cacheWrite += tw;
+          cost += s.cost || 0;
+
+          const model = s.model || 'unknown';
+          if (!byModel[model]) byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
+          byModel[model].tokens += sessionTokens;
+          byModel[model].cost += s.cost || 0;
+          byModel[model].sessions++;
+
+          if (s.startTime) {
+            const dateKey = new Date(s.startTime).toISOString().slice(0, 10);
+            if (!dailyMap[dateKey]) dailyMap[dateKey] = { tokens: 0, cost: 0, sessions: 0 };
+            dailyMap[dateKey].tokens += sessionTokens;
+            dailyMap[dateKey].cost += s.cost || 0;
+            dailyMap[dateKey].sessions++;
+          }
+        }
+        tokens.total = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+
+        const dailyBreakdown = Object.entries(dailyMap)
+          .map(([date, d]) => ({ date, ...d }))
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        return { tokens, cost, sessionCount: sessions.length, byModel, dailyBreakdown };
+      }
+
+      // ── Weekly period sessions ─────────────────────────────────────────────
+      const weeklySessions = allSessions.filter(s => {
         if (!s.startTime) return false;
         const d = new Date(s.startTime);
         return d >= periodStart && d < periodEnd;
       });
+      const weekly = aggregateSessions(weeklySessions);
 
-      const totalTokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
-      let totalCost = 0;
-      const byModel = {};
-      const dailyMap = {};
-
-      for (const s of periodSessions) {
-        const ti = s.tokens?.input || 0;
-        const to = s.tokens?.output || 0;
-        const tr = s.tokens?.cacheRead || 0;
-        const tw = s.tokens?.cacheWrite || 0;
-        const sessionTokens = ti + to + tr + tw;
-
-        totalTokens.input += ti;
-        totalTokens.output += to;
-        totalTokens.cacheRead += tr;
-        totalTokens.cacheWrite += tw;
-        totalCost += s.cost || 0;
-
-        const model = s.model || 'unknown';
-        if (!byModel[model]) byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
-        byModel[model].tokens += sessionTokens;
-        byModel[model].cost += s.cost || 0;
-        byModel[model].sessions++;
-
-        if (s.startTime) {
-          const dateKey = new Date(s.startTime).toISOString().slice(0, 10);
-          if (!dailyMap[dateKey]) dailyMap[dateKey] = { tokens: 0, cost: 0, sessions: 0 };
-          dailyMap[dateKey].tokens += sessionTokens;
-          dailyMap[dateKey].cost += s.cost || 0;
-          dailyMap[dateKey].sessions++;
-        }
-      }
-      totalTokens.total = totalTokens.input + totalTokens.output + totalTokens.cacheRead + totalTokens.cacheWrite;
-
-      const planLimit = cfg.plan?.monthlyCostLimit ?? null;
-      const includedCost = planLimit != null ? Math.min(totalCost, planLimit) : totalCost;
-      const overageCost = planLimit != null ? Math.max(0, totalCost - planLimit) : 0;
-      const usagePercent = planLimit != null ? Math.min((totalCost / planLimit) * 100, 100) : null;
-
-      // Burn rate: cost per day over the period so far
       const daysElapsed = Math.max(1, (now - periodStart) / (1000 * 60 * 60 * 24));
-      const dailyBurnRate = totalCost / daysElapsed;
-      const daysUntilExhausted = planLimit != null && dailyBurnRate > 0
-        ? Math.max(0, (planLimit - totalCost) / dailyBurnRate)
+      const dailyBurnRate = weekly.cost / daysElapsed;
+      const subscriptionCost = cfg.plan?.subscriptionCostPerMonth ?? null;
+      // weekly budget implied from monthly subscription
+      const weeklyBudget = subscriptionCost != null ? subscriptionCost / 4.33 : null;
+      const usagePercent = weeklyBudget != null ? Math.min((weekly.cost / weeklyBudget) * 100, 100) : null;
+      const overageCost = weeklyBudget != null ? Math.max(0, weekly.cost - weeklyBudget) : 0;
+      const daysUntilExhausted = weeklyBudget != null && dailyBurnRate > 0
+        ? Math.max(0, (weeklyBudget - weekly.cost) / dailyBurnRate)
         : null;
 
-      const dailyBreakdown = Object.entries(dailyMap)
-        .map(([date, d]) => ({ date, ...d }))
-        .sort((a, b) => a.date.localeCompare(b.date));
+      // ── 5-hour rolling window ──────────────────────────────────────────────
+      const fiveHoursMs = 5 * 60 * 60 * 1000;
+      const fiveHoursAgo = new Date(now - fiveHoursMs);
+      const recentSessions = allSessions
+        .filter(s => s.startTime && new Date(s.startTime) >= fiveHoursAgo)
+        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+      let fiveHourWindow = null;
+      if (recentSessions.length > 0) {
+        // window anchors to the oldest session start in the last 5h
+        const windowStart = new Date(recentSessions[0].startTime);
+        const windowEnd = new Date(windowStart.getTime() + fiveHoursMs);
+        const msUntilWindowReset = windowEnd - now;
+        const fiveHr = aggregateSessions(recentSessions);
+        fiveHourWindow = {
+          windowStart: windowStart.toISOString(),
+          windowEnd: windowEnd.toISOString(),
+          msUntilReset: Math.max(0, msUntilWindowReset),
+          hoursUntilReset: Math.max(0, Math.floor(msUntilWindowReset / (1000 * 60 * 60))),
+          minutesUntilReset: Math.max(0, Math.floor((msUntilWindowReset % (1000 * 60 * 60)) / (1000 * 60))),
+          totalTokens: fiveHr.tokens,
+          totalCost: fiveHr.cost,
+          sessionCount: fiveHr.sessionCount,
+          byModel: fiveHr.byModel,
+          active: msUntilWindowReset > 0,
+        };
+      }
 
       res.json({
         periodStart: periodStart.toISOString().slice(0, 10),
         periodEnd: periodEnd.toISOString().slice(0, 10),
+        periodLabel: 'weekly',
         daysRemaining,
         hoursUntilReset,
         minutesUntilReset,
-        plan: cfg.plan || { name: 'Unknown', monthlyCostLimit: null, billingDay: 1, paygAfterLimit: false },
-        currentPeriod: {
-          totalTokens,
-          totalCost,
-          sessionCount: periodSessions.length,
-          byModel,
-          dailyBreakdown,
+        plan: {
+          ...(cfg.plan || {}),
+          name: cfg.plan?.name || 'Unknown',
+          // expose as monthlyCostLimit for frontend compat; actual budget is weekly
+          monthlyCostLimit: subscriptionCost,
+          weeklyBudget,
+          paygAfterLimit: cfg.plan?.paygAfterLimit ?? false,
         },
-        includedCost,
+        currentPeriod: {
+          totalTokens: weekly.tokens,
+          totalCost: weekly.cost,
+          sessionCount: weekly.sessionCount,
+          byModel: weekly.byModel,
+          dailyBreakdown: weekly.dailyBreakdown,
+        },
+        includedCost: weeklyBudget != null ? Math.min(weekly.cost, weeklyBudget) : weekly.cost,
         overageCost,
         usagePercent,
         dailyBurnRate,
         daysUntilExhausted,
+        fiveHourWindow,
       });
     } catch (err) {
       errorResponse(res, err);

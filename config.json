@@ -5,8 +5,8 @@
   "timeSavedMultiplier": 2.5,
   "plan": {
     "name": "Claude Code Pro",
-    "monthlyCostLimit": 20.00,
-    "billingDay": 2,
+    "subscriptionCostPerMonth": 20.00,
+    "weeklyResetDay": 1,
     "paygAfterLimit": true
   },
   "pricing": {

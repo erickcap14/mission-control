@@ -45,6 +45,13 @@ function fmtCost(c) {
   return '$' + Number(c).toFixed(4);
 }
 
+function fmtCount(n) {
+  if (!n) return '0';
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+  if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+  return String(n);
+}
+
 function modelClass(model) {
   if (!model) return 'unknown';
   const m = model.toLowerCase();
@@ -387,6 +394,219 @@ function ChartsPanel({ dailyStats, monthlyStats }) {
   );
 }
 
+// ── Usage Dashboard ──────────────────────────────────────────
+
+function UsageDashboard({ usageStats }) {
+  if (!usageStats) return h('div', { className: 'loading' }, 'Loading...');
+
+  const { plan, currentPeriod, daysRemaining, hoursUntilReset, minutesUntilReset,
+          periodStart, periodEnd, overageCost, usagePercent, dailyBurnRate,
+          daysUntilExhausted, fiveHourWindow } = usageStats;
+  const { totalTokens, totalCost, sessionCount, byModel, dailyBreakdown } = currentPeriod;
+
+  const weeklyBudget = plan.weeklyBudget;
+  const hasLimit = weeklyBudget != null;
+  const progressColor = usagePercent != null
+    ? (usagePercent >= 90 ? '#ff6b6b' : usagePercent >= 70 ? '#ffaa00' : '#00d966')
+    : '#00d966';
+
+  const resetStr = daysRemaining > 1
+    ? `${daysRemaining}d ${hoursUntilReset % 24}h`
+    : `${hoursUntilReset}h ${minutesUntilReset % 60}m`;
+
+  const modelRows = Object.entries(byModel)
+    .map(([model, d]) => ({ model, ...d }))
+    .sort((a, b) => b.cost - a.cost);
+  const maxModelCost = Math.max(...modelRows.map(r => r.cost), 0.0001);
+
+  // 5-hour window reset countdown
+  const fiveHrResetStr = fiveHourWindow
+    ? (fiveHourWindow.hoursUntilReset > 0
+        ? `${fiveHourWindow.hoursUntilReset}h ${fiveHourWindow.minutesUntilReset % 60}m`
+        : `${fiveHourWindow.minutesUntilReset}m`)
+    : null;
+
+  return h('div', { className: 'usage-dashboard' },
+
+    // ── Weekly period card ──────────────────────────────────────────────────
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-header' },
+        h('div', { className: 'usage-plan-name' }, plan.name || 'Unknown'),
+        h('div', { className: 'usage-plan-limit' },
+          plan.monthlyCostLimit != null
+            ? '$' + plan.monthlyCostLimit.toFixed(2) + ' / mo subscription'
+            : 'pay-as-you-go'
+        )
+      ),
+
+      hasLimit ? h('div', { className: 'usage-progress-section' },
+        h('div', { className: 'usage-progress-labels' },
+          h('span', null, 'this week vs weekly budget'),
+          h('span', null, (usagePercent || 0).toFixed(1) + '%')
+        ),
+        h('div', { className: 'usage-progress-track' },
+          h('div', {
+            className: 'usage-progress-fill',
+            style: { width: Math.min(usagePercent || 0, 100) + '%', background: progressColor }
+          })
+        ),
+        (() => {
+          if (!dailyBurnRate) return null;
+          if (totalCost > weeklyBudget) {
+            const daysAgo = Math.round((totalCost - weeklyBudget) / dailyBurnRate);
+            return h('div', { className: 'usage-projection' },
+              'weekly budget exceeded ~' + daysAgo + 'd ago'
+            );
+          }
+          if (daysUntilExhausted != null) {
+            return h('div', { className: 'usage-projection' },
+              'at current burn rate, weekly budget in ~' + Math.round(daysUntilExhausted) + 'd'
+            );
+          }
+          return null;
+        })()
+      ) : null,
+
+      h('div', { className: 'usage-metrics-row' },
+        h('div', { className: 'usage-metric' },
+          h('div', { className: 'usage-metric-label' }, 'Week Cost'),
+          h('div', { className: 'usage-metric-value cost' }, fmtCost(totalCost))
+        ),
+        h('div', { className: 'usage-metric' },
+          h('div', { className: 'usage-metric-label' }, 'Sessions'),
+          h('div', { className: 'usage-metric-value' }, sessionCount)
+        ),
+        h('div', { className: 'usage-metric' },
+          h('div', { className: 'usage-metric-label' }, 'Daily Burn'),
+          h('div', { className: 'usage-metric-value cost' }, fmtCost(dailyBurnRate))
+        ),
+        h('div', { className: 'usage-metric' },
+          h('div', { className: 'usage-metric-label' }, 'Total Tokens'),
+          h('div', { className: 'usage-metric-value' }, fmtCount(totalTokens.total))
+        )
+      ),
+
+      h('div', { className: 'usage-reset-row' },
+        h('div', { className: 'usage-reset-label' }, 'Weekly reset in'),
+        h('div', { className: 'usage-countdown' }, resetStr),
+        h('div', { className: 'usage-period-range' }, periodStart + ' → ' + periodEnd)
+      )
+    ),
+
+    // ── 5-hour rolling window card ─────────────────────────────────────────
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-header' },
+        h('div', { className: 'usage-plan-name' }, '5-Hour Window'),
+        fiveHourWindow && fiveHourWindow.active
+          ? h('div', { className: 'usage-plan-limit', style: { color: '#00d966' } }, 'active')
+          : h('div', { className: 'usage-plan-limit', style: { color: '#666' } }, 'no recent activity')
+      ),
+      fiveHourWindow
+        ? h('div', null,
+            h('div', { className: 'usage-metrics-row' },
+              h('div', { className: 'usage-metric' },
+                h('div', { className: 'usage-metric-label' }, 'Window Cost'),
+                h('div', { className: 'usage-metric-value cost' }, fmtCost(fiveHourWindow.totalCost))
+              ),
+              h('div', { className: 'usage-metric' },
+                h('div', { className: 'usage-metric-label' }, 'Sessions'),
+                h('div', { className: 'usage-metric-value' }, fiveHourWindow.sessionCount)
+              ),
+              h('div', { className: 'usage-metric' },
+                h('div', { className: 'usage-metric-label' }, 'Tokens'),
+                h('div', { className: 'usage-metric-value' }, fmtCount(fiveHourWindow.totalTokens.total))
+              )
+            ),
+            fiveHourWindow.active
+              ? h('div', { className: 'usage-reset-row' },
+                  h('div', { className: 'usage-reset-label' }, 'Window resets in'),
+                  h('div', { className: 'usage-countdown' }, fiveHrResetStr),
+                  h('div', { className: 'usage-period-range' },
+                    new Date(fiveHourWindow.windowStart).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    + ' → '
+                    + new Date(fiveHourWindow.windowEnd).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  )
+                )
+              : h('div', { className: 'usage-period-range', style: { padding: '8px 0', color: '#666' } },
+                  'window expired — next starts with your next prompt'
+                )
+          )
+        : h('div', { className: 'usage-period-range', style: { padding: '8px 0', color: '#666' } },
+            'no sessions in the past 5 hours'
+          )
+    ),
+
+    overageCost > 0 ? h('div', { className: 'usage-card usage-overage-card' },
+      h('div', { className: 'usage-overage-header' }, 'Over Weekly Budget'),
+      h('div', { className: 'usage-overage-amount' }, fmtCost(overageCost)),
+      h('div', { className: 'usage-overage-desc' },
+        plan.paygAfterLimit ? 'billed as pay-as-you-go' : 'over weekly budget'
+      )
+    ) : null,
+
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-title' }, 'Token Breakdown'),
+      h('div', { className: 'usage-token-grid' },
+        h('div', { className: 'usage-token-cell' },
+          h('div', { className: 'usage-token-label' }, 'Input'),
+          h('div', { className: 'usage-token-value' }, fmtCount(totalTokens.input))
+        ),
+        h('div', { className: 'usage-token-cell' },
+          h('div', { className: 'usage-token-label' }, 'Output'),
+          h('div', { className: 'usage-token-value' }, fmtCount(totalTokens.output))
+        ),
+        h('div', { className: 'usage-token-cell' },
+          h('div', { className: 'usage-token-label' }, 'Cache Read'),
+          h('div', { className: 'usage-token-value' }, fmtCount(totalTokens.cacheRead))
+        ),
+        h('div', { className: 'usage-token-cell' },
+          h('div', { className: 'usage-token-label' }, 'Cache Write'),
+          h('div', { className: 'usage-token-value' }, fmtCount(totalTokens.cacheWrite))
+        )
+      )
+    ),
+
+    modelRows.length > 0 ? h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-title' }, 'Model Breakdown'),
+      h('table', { className: 'usage-model-table' },
+        h('thead', null,
+          h('tr', null,
+            h('th', null, 'Model'),
+            h('th', null, 'Sessions'),
+            h('th', null, 'Tokens'),
+            h('th', null, 'Cost'),
+            h('th', null, '% of Total')
+          )
+        ),
+        h('tbody', null,
+          ...modelRows.map((r, i) =>
+            h('tr', { key: i },
+              h('td', null, h(ModelBadge, { model: r.model })),
+              h('td', null, r.sessions),
+              h('td', null, fmtCount(r.tokens)),
+              h('td', { style: { color: '#ffaa00' } }, fmtCost(r.cost)),
+              h('td', null,
+                h('div', { className: 'usage-pct-bar' },
+                  h('div', {
+                    className: 'usage-pct-fill',
+                    style: { width: (r.cost / maxModelCost * 80) + 'px' }
+                  }),
+                  h('span', null, totalCost > 0 ? (r.cost / totalCost * 100).toFixed(1) + '%' : '0%')
+                )
+              )
+            )
+          )
+        )
+      )
+    ) : null,
+
+    dailyBreakdown.length > 0 ? h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-title' }, 'Daily Cost — This Week'),
+      h(BarChart, { data: dailyBreakdown, xKey: 'date', yKey: 'cost', color: '#00d966', height: 130 })
+    ) : null
+  );
+}
+
 // ── Main App ─────────────────────────────────────────────────
 
 function App() {
@@ -400,6 +620,8 @@ function App() {
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
   const [showCharts, setShowCharts] = useState(false);
+  const [view, setView] = useState('sessions');
+  const [usageStats, setUsageStats] = useState(null);
   const [dailyStats, setDailyStats] = useState([]);
   const [monthlyStats, setMonthlyStats] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -439,6 +661,13 @@ function App() {
       ]);
       if (dr.ok) setDailyStats(await dr.json());
       if (mr.ok) setMonthlyStats(await mr.json());
+    } catch (e) { /* silent */ }
+  }, []);
+
+  const fetchUsageStats = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/usage-stats`);
+      if (res.ok) setUsageStats(await res.json());
     } catch (e) { /* silent */ }
   }, []);
 
@@ -623,26 +852,50 @@ function App() {
     ? sessions.filter(s => s.projectPath === selectedProject).length
     : totalSessionCount;
 
+  const topBarSessions = selectedProject
+    ? sessions.filter(s => s.projectPath === selectedProject)
+    : sessions;
+  const topBarCost = selectedProject
+    ? topBarSessions.reduce((sum, s) => sum + (s.cost || 0), 0)
+    : stats.totalCost || 0;
+  const topBarTokens = topBarSessions.reduce((sum, s) => {
+    const t = s.tokens || {};
+    return sum + (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0);
+  }, 0);
+
   return h('div', { className: 'app' },
 
     // TOP BAR
     h('div', { className: 'top-bar' },
       h('div', { className: 'logo' }, 'MISSION-CONTROL'),
+      h('div', { className: 'top-bar-nav' },
+        h('button', {
+          className: 'nav-btn' + (view === 'sessions' ? ' active' : ''),
+          onClick: () => setView('sessions')
+        }, 'Sessions'),
+        h('button', {
+          className: 'nav-btn' + (view === 'usage' ? ' active' : ''),
+          onClick: () => {
+            setView('usage');
+            if (!usageStats) fetchUsageStats();
+          }
+        }, 'Usage')
+      ),
       h('div', { className: 'stat-item' },
-        h('div', { className: 'stat-label' }, 'Projects'),
-        h('div', { className: 'stat-value' }, stats.projectCount || 0)
+        h('div', { className: 'stat-label' }, selectedProject ? 'Project' : 'Projects'),
+        h('div', { className: 'stat-value' }, selectedProject ? 1 : stats.projectCount || 0)
       ),
       h('div', { className: 'stat-item' },
         h('div', { className: 'stat-label' }, 'Sessions'),
-        h('div', { className: 'stat-value' }, stats.sessionCount || 0)
+        h('div', { className: 'stat-value' }, selectedProject ? topBarSessions.length : stats.sessionCount || 0)
       ),
       h('div', { className: 'stat-item cost' },
-        h('div', { className: 'stat-label' }, 'Total Cost'),
-        h('div', { className: 'stat-value' }, '$' + (stats.totalCost || 0).toFixed(4))
+        h('div', { className: 'stat-label' }, 'Cost'),
+        h('div', { className: 'stat-value' }, '$' + topBarCost.toFixed(4))
       ),
-      h('div', { className: 'stat-item time' },
-        h('div', { className: 'stat-label' }, 'Time Saved'),
-        h('div', { className: 'stat-value' }, (stats.timeSaved || 0).toFixed(1) + 'h')
+      h('div', { className: 'stat-item' },
+        h('div', { className: 'stat-label' }, 'Tokens'),
+        h('div', { className: 'stat-value' }, fmtCount(topBarTokens))
       ),
       h('div', { className: 'top-bar-spacer' }),
       h('div', { className: 'live-indicator' },
@@ -652,7 +905,11 @@ function App() {
     ),
 
     // MAIN
-    h('div', { className: 'main-layout' },
+    view === 'usage'
+      ? h('div', { className: 'main-layout' },
+          h('div', { className: 'content' }, h(UsageDashboard, { usageStats }))
+        )
+      : h('div', { className: 'main-layout' },
 
       // SIDEBAR
       h('div', { className: 'sidebar' },
