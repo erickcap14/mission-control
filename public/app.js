@@ -612,17 +612,17 @@ function UsageDashboard({ usageStats }) {
 function ToolkitPanel({ toolkitData }) {
   if (!toolkitData) return h('div', { className: 'loading' }, 'Loading...');
 
-  const { skills, plugins, globalSettings } = toolkitData;
+  const { skills, mcpServers, plugins, globalSettings } = toolkitData;
 
   return h('div', { className: 'usage-dashboard' },
 
     h('div', { className: 'usage-card' },
-      h('div', { className: 'modal-section-label' }, 'skills & commands'),
+      h('div', { className: 'modal-section-label' }, 'commands & hooks'),
       h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px' } },
         (skills && skills.length > 0)
-          ? skills.filter(s => s.type === 'skill').length + ' skills · ' +
+          ? skills.filter(s => s.type === 'command').length + ' commands · ' +
             skills.filter(s => s.type === 'hook').length + ' hooks'
-          : 'no custom skills or hooks found'
+          : 'no custom commands or hooks found'
       ),
       skills && skills.length > 0
         ? h('table', { className: 'usage-model-table' },
@@ -646,8 +646,8 @@ function ToolkitPanel({ toolkitData }) {
                       style: {
                         fontSize: '10px',
                         padding: '1px 5px',
-                        border: '1px solid ' + (sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : '#555'),
-                        color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'skill' ? '#00d966' : '#888',
+                        border: '1px solid ' + (sk.type === 'hook' ? '#ffaa00' : sk.type === 'command' ? '#00d966' : '#555'),
+                        color: sk.type === 'hook' ? '#ffaa00' : sk.type === 'command' ? '#00d966' : '#888',
                         fontFamily: "'IBM Plex Mono', monospace",
                       }
                     }, sk.type || 'command')
@@ -667,6 +667,46 @@ function ToolkitPanel({ toolkitData }) {
                   ),
                   h('td', { style: { textAlign: 'right', color: sk.usageCount > 0 ? '#00d966' : '#333', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace" } },
                     sk.usageCount == null ? '—' : sk.usageCount
+                  )
+                )
+              )
+            )
+          )
+        : null
+    ),
+
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'modal-section-label' }, 'mcp servers'),
+      h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px' } },
+        (mcpServers && mcpServers.length > 0)
+          ? mcpServers.length + ' server' + (mcpServers.length !== 1 ? 's' : '') + ' configured'
+          : 'no mcp servers found'
+      ),
+      mcpServers && mcpServers.length > 0
+        ? h('table', { className: 'usage-model-table' },
+            h('thead', null,
+              h('tr', null,
+                h('th', null, 'Name'),
+                h('th', null, 'Command'),
+                h('th', null, 'Sources')
+              )
+            ),
+            h('tbody', null,
+              ...mcpServers.map((srv, i) =>
+                h('tr', { key: i },
+                  h('td', { style: { fontFamily: "'IBM Plex Mono', monospace", color: '#00b4d8', fontSize: '11px' } }, srv.name),
+                  h('td', { style: { color: '#888', fontSize: '11px', fontFamily: "'IBM Plex Mono', monospace" } }, truncate(srv.description, 60)),
+                  h('td', null,
+                    srv.sources && srv.sources.map((src, j) =>
+                      h('span', {
+                        key: j,
+                        style: {
+                          marginRight: '4px',
+                          color: src === 'global' ? '#ffaa00' : '#555',
+                          fontSize: '11px'
+                        }
+                      }, src + (j < srv.sources.length - 1 ? ',' : ''))
+                    )
                   )
                 )
               )
