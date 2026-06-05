@@ -1,26 +1,56 @@
 {
   "hooks": {
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "command": "bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
-      }
-    ],
     "SessionStart": [
       {
-        "hooks": [
-          {
-            "command": "bd prime",
-            "type": "command"
-          }
-        ],
-        "matcher": ""
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": "bd prime" }]
       }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [{ "type": "command", "command": "bd prime" }]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [{
+          "type": "command",
+          "command": "git status --short && git log origin/master..HEAD --oneline 2>/dev/null | grep -q . && echo '⚠️  UNPUSHED COMMITS — run git push before closing' || echo '✓ clean'"
+        }]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bd *)",
+      "Bash(git *)",
+      "Bash(gh *)",
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(python3 *)",
+      "Bash(curl *)",
+      "Bash(ls *)",
+      "Bash(find *)",
+      "Bash(grep *)",
+      "Bash(lsof *)",
+      "Bash(pkill *)",
+      "Bash(kill *)",
+      "Bash(timeout *)",
+      "Bash(head *)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_press_key",
+      "mcp__playwright__browser_resize",
+      "mcp__playwright__browser_console_messages",
+      "Read(/Users/erickcapulong/Documents/Projects/**)",
+      "Skill(claude-api)",
+      "WebSearch"
     ]
   }
 }

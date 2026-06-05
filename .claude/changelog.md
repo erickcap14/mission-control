@@ -73,6 +73,13 @@ This ensures transparency and traceability for all AI-executed workflows.
 
 ## [Unreleased]
 
+### Added
+- `start.sh` — shell startup script that checks for node, installs deps if missing, detects if port 9000 is already in use (opens existing instance instead of starting a second), starts the server, waits for it to be ready, and opens `http://localhost:9000` in the browser
+- `missioncontrol` zsh alias in `~/.zshrc` pointing to `start.sh`
+- `.claude/settings.json`: added `Stop` hook for unpushed-commit warning; added `permissions.allow` allowlist for common Bash/MCP/Read patterns to reduce permission prompts
+
+---
+
 ### Issue Completion
 
 **Issue:** `mission_control-15l`
