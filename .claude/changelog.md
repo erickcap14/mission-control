@@ -84,6 +84,9 @@ This ensures transparency and traceability for all AI-executed workflows.
 - **Daily cost chart visible by default** — `showCharts` state initializes to `true`; charts panel renders immediately on load without requiring the toggle; fixed stale "This Week" label to "This Month" in usage dashboard daily breakdown chart
 - **Per-project cost in sidebar** — each sidebar project item now shows total cost in amber (`$X.XX`) above the session count; "All Projects" row shows global total cost from `/api/stats`; uses new `.project-meta` / `.project-cost` CSS classes
 
+### Fixed
+- **Sidebar project cost mismatch** — `refreshData` now includes `fetchProjects()` alongside `fetchStats()` and `fetchSessions()`; previously, sidebar project costs were only fetched once at mount and grew stale while the header recalculated from live-refreshed session data every 5 seconds
+
 ---
 
 ### Issue Completion

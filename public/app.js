@@ -852,8 +852,8 @@ function App() {
   }, []);
 
   const refreshData = useCallback(async () => {
-    await Promise.all([fetchStats(), fetchSessions()]);
-  }, [fetchStats, fetchSessions]);
+    await Promise.all([fetchStats(), fetchSessions(), fetchProjects()]);
+  }, [fetchStats, fetchSessions, fetchProjects]);
 
   // ── Mount: initial load + SSE + polling ──
 
