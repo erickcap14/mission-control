@@ -7,7 +7,10 @@
     "name": "Claude Code Pro",
     "subscriptionCostPerMonth": 20.00,
     "billingAnchorDay": 1,
-    "paygAfterLimit": true
+    "paygAfterLimit": true,
+    "weeklyResetWeekday": 1,
+    "weeklyTokenLimit": 2000000000,
+    "fiveHourTokenLimit": 400000000
   },
   "pricing": {
     "claude-opus-4-8": { "input": 15, "output": 75, "cacheRead": 1.5, "cacheWrite": 18.75 },

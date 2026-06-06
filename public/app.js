@@ -47,6 +47,7 @@ function fmtCost(c) {
 
 function fmtCount(n) {
   if (!n) return '0';
+  if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B';
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
   return String(n);
@@ -396,19 +397,46 @@ function ChartsPanel({ dailyStats, monthlyStats }) {
 
 // ── Usage Dashboard ──────────────────────────────────────────
 
+function TokenLimitBar({ label, reset, used, limit }) {
+  const hasLimit = limit != null && limit > 0;
+  const pct = hasLimit ? (used / limit) * 100 : 0;
+  const color = !hasLimit
+    ? '#3a7afe'
+    : (pct >= 90 ? '#ff6b6b' : pct >= 70 ? '#ffaa00' : '#00d966');
+  const remaining = hasLimit ? limit - used : null;
+
+  return h('div', { className: 'token-bar' },
+    h('div', { className: 'usage-progress-labels' },
+      h('span', null, label + (reset ? ' · resets in ' + reset : '')),
+      h('span', { className: 'token-bar-amounts' },
+        hasLimit
+          ? fmtCount(used) + ' / ' + fmtCount(limit)
+          : fmtCount(used) + ' used'
+      )
+    ),
+    h('div', { className: 'usage-progress-track' },
+      h('div', {
+        className: 'usage-progress-fill',
+        style: { width: Math.min(hasLimit ? pct : 100, 100) + '%', background: color }
+      })
+    ),
+    hasLimit
+      ? h('div', { className: 'token-bar-remaining' },
+          remaining >= 0
+            ? fmtCount(remaining) + ' tokens remaining (' + pct.toFixed(1) + '%)'
+            : 'over by ' + fmtCount(-remaining) + ' tokens'
+        )
+      : h('div', { className: 'token-bar-remaining' }, 'no limit set — usage only')
+  );
+}
+
 function UsageDashboard({ usageStats }) {
   if (!usageStats) return h('div', { className: 'loading' }, 'Loading...');
 
   const { plan, currentPeriod, daysRemaining, hoursUntilReset, minutesUntilReset,
           periodStart, periodEnd, overageCost, usagePercent, dailyBurnRate,
-          daysUntilExhausted, fiveHourWindow } = usageStats;
+          daysUntilExhausted, fiveHourWindow, weeklyWindow } = usageStats;
   const { totalTokens, totalCost, sessionCount, byModel, dailyBreakdown } = currentPeriod;
-
-  const weeklyBudget = plan.monthlyBudget;
-  const hasLimit = weeklyBudget != null;
-  const progressColor = usagePercent != null
-    ? (usagePercent >= 90 ? '#ff6b6b' : usagePercent >= 70 ? '#ffaa00' : '#00d966')
-    : '#00d966';
 
   const resetStr = daysRemaining > 1
     ? `${daysRemaining}d ${hoursUntilReset % 24}h`
@@ -426,9 +454,35 @@ function UsageDashboard({ usageStats }) {
         : `${fiveHourWindow.minutesUntilReset}m`)
     : null;
 
+  // weekly window reset countdown
+  const weeklyResetStr = weeklyWindow
+    ? (weeklyWindow.daysUntilReset > 0
+        ? `${weeklyWindow.daysUntilReset}d ${weeklyWindow.hoursUntilReset % 24}h`
+        : `${weeklyWindow.hoursUntilReset}h ${weeklyWindow.minutesUntilReset % 60}m`)
+    : null;
+
   return h('div', { className: 'usage-dashboard' },
 
-    // ── Weekly period card ──────────────────────────────────────────────────
+    // ── Token limits card (weekly + 5-hour) ─────────────────────────────────
+    h('div', { className: 'usage-card' },
+      h('div', { className: 'usage-card-title' }, 'Token Limits'),
+      h('div', { className: 'token-bar-stack' },
+        h(TokenLimitBar, {
+          label: 'WEEKLY',
+          reset: weeklyResetStr,
+          used: weeklyWindow ? weeklyWindow.totalTokens.total : 0,
+          limit: plan.weeklyTokenLimit
+        }),
+        h(TokenLimitBar, {
+          label: '5-HOUR WINDOW',
+          reset: fiveHourWindow && fiveHourWindow.active ? fiveHrResetStr : null,
+          used: fiveHourWindow ? fiveHourWindow.totalTokens.total : 0,
+          limit: plan.fiveHourTokenLimit
+        })
+      )
+    ),
+
+    // ── Monthly period card ─────────────────────────────────────────────────
     h('div', { className: 'usage-card' },
       h('div', { className: 'usage-card-header' },
         h('div', { className: 'usage-plan-name' }, plan.name || 'Unknown'),
@@ -438,34 +492,6 @@ function UsageDashboard({ usageStats }) {
             : 'pay-as-you-go'
         )
       ),
-
-      hasLimit ? h('div', { className: 'usage-progress-section' },
-        h('div', { className: 'usage-progress-labels' },
-          h('span', null, 'this month vs monthly budget'),
-          h('span', null, (usagePercent || 0).toFixed(1) + '%')
-        ),
-        h('div', { className: 'usage-progress-track' },
-          h('div', {
-            className: 'usage-progress-fill',
-            style: { width: Math.min(usagePercent || 0, 100) + '%', background: progressColor }
-          })
-        ),
-        (() => {
-          if (!dailyBurnRate) return null;
-          if (totalCost > weeklyBudget) {
-            const daysAgo = Math.round((totalCost - weeklyBudget) / dailyBurnRate);
-            return h('div', { className: 'usage-projection' },
-              'monthly budget exceeded ~' + daysAgo + 'd ago'
-            );
-          }
-          if (daysUntilExhausted != null) {
-            return h('div', { className: 'usage-projection' },
-              'at current burn rate, monthly budget in ~' + Math.round(daysUntilExhausted) + 'd'
-            );
-          }
-          return null;
-        })()
-      ) : null,
 
       h('div', { className: 'usage-metrics-row' },
         h('div', { className: 'usage-metric' },
@@ -789,6 +815,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
+  const [visibleCount, setVisibleCount] = useState(20);
   const [showCharts, setShowCharts] = useState(true);
   const [view, setView] = useState('sessions');
   const [usageStats, setUsageStats] = useState(null);
@@ -917,7 +944,11 @@ function App() {
           return;
         }
         if (e.key === 'j') {
-          setSelectedRowIndex(i => Math.min(i + 1, filteredSorted.length - 1));
+          setSelectedRowIndex(i => {
+            const next = Math.min(i + 1, filteredSorted.length - 1);
+            setVisibleCount(vc => next >= vc ? vc + 20 : vc);  // reveal hidden rows as you scroll
+            return next;
+          });
           return;
         }
         if (e.key === 'k') {
@@ -977,6 +1008,9 @@ function App() {
     }
     return sortOrder === 'asc' ? av - bv : bv - av;
   });
+
+  // Reset pagination whenever the visible set changes
+  useEffect(() => { setVisibleCount(20); }, [searchQuery, selectedProject, sortKey, sortOrder]);
 
   // ── Sort header click ──
 
@@ -1190,7 +1224,7 @@ function App() {
                         searchQuery ? 'no sessions match your search' : 'no sessions yet'
                       )
                     )
-                  : filteredSorted.map((s, i) =>
+                  : filteredSorted.slice(0, visibleCount).map((s, i) =>
                       h('tr', {
                         key: s.id || i,
                         className: selectedRowIndex === i ? 'row-selected' : '',
@@ -1209,7 +1243,15 @@ function App() {
                       )
                     )
               )
-            )
+            ),
+
+        // SHOW MORE
+        (!loading && filteredSorted.length > visibleCount)
+          ? h('button', {
+              className: 'show-more-btn',
+              onClick: () => setVisibleCount(v => v + 20)
+            }, `Show more (showing ${Math.min(visibleCount, filteredSorted.length)} of ${filteredSorted.length})`)
+          : null
       )
     ),
 

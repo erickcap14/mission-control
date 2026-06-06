@@ -74,6 +74,8 @@ This ensures transparency and traceability for all AI-executed workflows.
 ## [Unreleased]
 
 ### Added
+- **Token-limit bars on usage dashboard** (`mission_control-hi6`) — replaced the "this month vs monthly budget" red cost bar with a new **Token Limits** card showing two bars: weekly and 5-hour token usage vs configurable caps. Each bar shows `used / limit`, a remaining figure (or "over by X"), reset countdown, and green→orange→red color by percent. New config fields `plan.weeklyTokenLimit`, `plan.fiveHourTokenLimit` (total incl. cache; placeholder defaults — tune to your plan), and `plan.weeklyResetWeekday` (0=Sun…1=Mon). `server.js` `/api/usage-stats` now returns a `weeklyWindow` object (fixed weekly reset anchored to `weeklyResetWeekday`) and passes the token limits through `plan`. `fmtCount` gained a billions (`B`) tier.
+- **Sessions page pagination** (`mission_control-hi6`) — the sessions table now renders 20 rows initially with a "Show more (showing X of N)" button that reveals 20 more per click; `j`-key navigation auto-reveals hidden rows; pagination resets to 20 when search/project/sort changes.
 - `start.sh` — shell startup script that checks for node, installs deps if missing, detects if port 9000 is already in use (opens existing instance instead of starting a second), starts the server, waits for it to be ready, and opens `http://localhost:9000` in the browser
 - `missioncontrol` zsh alias in `~/.zshrc` pointing to `start.sh`
 - `.claude/settings.json`: added `Stop` hook for unpushed-commit warning; added `permissions.allow` allowlist for common Bash/MCP/Read patterns to reduce permission prompts

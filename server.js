@@ -483,6 +483,33 @@ async function createApp(config, sessionManager) {
         };
       }
 
+      // ── Weekly fixed-reset window ──────────────────────────────────────────
+      // Anchored to the most recent `weeklyResetWeekday` (0=Sun) at local midnight.
+      const weeklyResetWeekday = cfg.plan?.weeklyResetWeekday ?? 1;
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const daysSinceReset = (now.getDay() - weeklyResetWeekday + 7) % 7;
+      weekStart.setDate(weekStart.getDate() - daysSinceReset);
+      const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const msUntilWeekReset = weekEnd - now;
+      const weeklySessions = allSessions.filter(s => {
+        if (!s.startTime) return false;
+        const d = new Date(s.startTime);
+        return d >= weekStart && d < weekEnd;
+      });
+      const weekly = aggregateSessions(weeklySessions);
+      const weeklyWindow = {
+        windowStart: weekStart.toISOString(),
+        windowEnd: weekEnd.toISOString(),
+        msUntilReset: Math.max(0, msUntilWeekReset),
+        daysUntilReset: Math.max(0, Math.floor(msUntilWeekReset / (1000 * 60 * 60 * 24))),
+        hoursUntilReset: Math.max(0, Math.floor(msUntilWeekReset / (1000 * 60 * 60))),
+        minutesUntilReset: Math.max(0, Math.floor((msUntilWeekReset % (1000 * 60 * 60)) / (1000 * 60))),
+        totalTokens: weekly.tokens,
+        totalCost: weekly.cost,
+        sessionCount: weekly.sessionCount,
+        active: true,
+      };
+
       res.json({
         periodStart: periodStart.toISOString().slice(0, 10),
         periodEnd: periodEnd.toISOString().slice(0, 10),
@@ -496,6 +523,8 @@ async function createApp(config, sessionManager) {
           monthlyCostLimit: subscriptionCost,
           monthlyBudget,
           paygAfterLimit: cfg.plan?.paygAfterLimit ?? false,
+          weeklyTokenLimit: cfg.plan?.weeklyTokenLimit ?? null,
+          fiveHourTokenLimit: cfg.plan?.fiveHourTokenLimit ?? null,
         },
         currentPeriod: {
           totalTokens: monthly.tokens,
@@ -510,6 +539,7 @@ async function createApp(config, sessionManager) {
         dailyBurnRate,
         daysUntilExhausted,
         fiveHourWindow,
+        weeklyWindow,
       });
     } catch (err) {
       errorResponse(res, err);
