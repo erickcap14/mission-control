@@ -4,6 +4,13 @@
       {
         "matcher": "",
         "hooks": [{ "type": "command", "command": "bd prime" }]
+      },
+      {
+        "matcher": "",
+        "hooks": [{
+          "type": "command",
+          "command": "[ -f './.claude/hooks/ctx-wrapup.sh' ] || echo '⚠️  SETUP REQUIRED: .claude/hooks/ctx-wrapup.sh is missing. Copy it from dong-vibe-code: cp ../dong-vibe-code/.claude/hooks/ctx-wrapup.sh .claude/hooks/ && chmod +x .claude/hooks/ctx-wrapup.sh'"
+        }]
       }
     ],
     "PreCompact": [
@@ -18,6 +25,13 @@
         "hooks": [{
           "type": "command",
           "command": "git status --short && git log origin/master..HEAD --oneline 2>/dev/null | grep -q . && echo '⚠️  UNPUSHED COMMITS — run git push before closing' || echo '✓ clean'"
+        }]
+      },
+      {
+        "matcher": "",
+        "hooks": [{
+          "type": "command",
+          "command": "[ -f './.claude/hooks/ctx-wrapup.sh' ] && bash ./.claude/hooks/ctx-wrapup.sh || true"
         }]
       }
     ]
