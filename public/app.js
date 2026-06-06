@@ -601,7 +601,7 @@ function UsageDashboard({ usageStats }) {
     ) : null,
 
     dailyBreakdown.length > 0 ? h('div', { className: 'usage-card' },
-      h('div', { className: 'usage-card-title' }, 'Daily Cost — This Week'),
+      h('div', { className: 'usage-card-title' }, 'Daily Cost — This Month'),
       h(BarChart, { data: dailyBreakdown, xKey: 'date', yKey: 'cost', color: '#00d966', height: 130 })
     ) : null
   );
@@ -789,7 +789,7 @@ function App() {
   const [sortOrder, setSortOrder] = useState('desc');
   const [selectedSession, setSelectedSession] = useState(null);
   const [selectedRowIndex, setSelectedRowIndex] = useState(-1);
-  const [showCharts, setShowCharts] = useState(false);
+  const [showCharts, setShowCharts] = useState(true);
   const [view, setView] = useState('sessions');
   const [usageStats, setUsageStats] = useState(null);
   const [toolkitData, setToolkitData] = useState(null);
@@ -1110,7 +1110,10 @@ function App() {
           onClick: () => setSelectedProject(null)
         },
           h('span', { className: 'project-name' }, 'All Projects'),
-          h('span', { className: 'project-count' }, totalSessionCount)
+          h('span', { className: 'project-meta' },
+            h('span', { className: 'project-cost' }, fmtCost(stats.totalCost)),
+            h('span', { className: 'project-count' }, totalSessionCount + ' sessions')
+          )
         ),
         ...projects.map((p, i) =>
           h('div', {
@@ -1119,7 +1122,10 @@ function App() {
             onClick: () => setSelectedProject(p.path)
           },
             h('span', { className: 'project-name', title: p.path }, p.name || p.path),
-            h('span', { className: 'project-count' }, p.sessionCount || 0)
+            h('span', { className: 'project-meta' },
+              h('span', { className: 'project-cost' }, p.totalCost > 0 ? fmtCost(p.totalCost) : ''),
+              h('span', { className: 'project-count' }, (p.sessionCount || 0) + ' sessions')
+            )
           )
         )
       ),

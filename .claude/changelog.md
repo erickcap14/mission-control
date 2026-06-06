@@ -81,6 +81,8 @@ This ensures transparency and traceability for all AI-executed workflows.
 - **Type and Uses columns in Toolkit** — Type badge (`skill` in green, `hook` in amber) distinguishes slash commands from automated hook triggers; Uses column shows real invocation count derived from scanning `<command-name>` tags in all 159 JSONL session files; hooks from `~/.claude/settings.json` and project `settings.json` files are included as rows with type "hook" and uses "—"
 - **Toolkit description tooltips** — hovering over a truncated description in the skills or MCP servers table shows the full text in a styled tooltip; implemented via CSS `.tooltip-wrap`/`.tooltip-box` with `position: absolute` to avoid overflow clipping
 - **Monthly billing period** — usage dashboard switched from artificial weekly bucketing (`$20 ÷ 4.33`) to a true monthly period anchored to `billingAnchorDay` in config.json (defaults to 1); all labels updated from "weekly" → "monthly"; `server.js` `/api/usage-stats` now exposes `monthlyBudget` and `periodLabel: 'monthly'`; user should update `billingAnchorDay` to their actual Anthropic subscription renewal day once confirmed
+- **Daily cost chart visible by default** — `showCharts` state initializes to `true`; charts panel renders immediately on load without requiring the toggle; fixed stale "This Week" label to "This Month" in usage dashboard daily breakdown chart
+- **Per-project cost in sidebar** — each sidebar project item now shows total cost in amber (`$X.XX`) above the session count; "All Projects" row shows global total cost from `/api/stats`; uses new `.project-meta` / `.project-cost` CSS classes
 
 ---
 
