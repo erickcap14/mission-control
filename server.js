@@ -372,22 +372,20 @@ async function createApp(config, sessionManager) {
     }
   });
 
-  // Usage stats: weekly period + 5-hour rolling window
+  // Usage stats: monthly billing period + 5-hour rolling window
   app.get('/api/usage-stats', async (_req, res) => {
     try {
       const cfg = sessionManager.config;
       const now = new Date();
 
-      // ── Weekly period (Mon–Sun, resets on weeklyResetDay) ──────────────────
-      const resetDay = cfg.plan?.weeklyResetDay ?? 1; // 0=Sun, 1=Mon, ...
-      const nowDay = now.getDay();
-      // days since the last reset day
-      const daysSinceReset = ((nowDay - resetDay) + 7) % 7;
-      const periodStart = new Date(now);
-      periodStart.setDate(now.getDate() - daysSinceReset);
-      periodStart.setHours(0, 0, 0, 0);
-      const periodEnd = new Date(periodStart);
-      periodEnd.setDate(periodStart.getDate() + 7);
+      // ── Monthly billing period (anchored to billingAnchorDay of each month) ──
+      const anchorDay = cfg.plan?.billingAnchorDay ?? 1; // day-of-month the subscription renews
+      let periodStart = new Date(now.getFullYear(), now.getMonth(), anchorDay);
+      if (periodStart > now) {
+        // anchor hasn't occurred yet this month — go back one month
+        periodStart = new Date(now.getFullYear(), now.getMonth() - 1, anchorDay);
+      }
+      const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, anchorDay);
 
       const msUntilReset = periodEnd - now;
       const daysRemaining = Math.floor(msUntilReset / (1000 * 60 * 60 * 24));
@@ -439,23 +437,22 @@ async function createApp(config, sessionManager) {
         return { tokens, cost, sessionCount: sessions.length, byModel, dailyBreakdown };
       }
 
-      // ── Weekly period sessions ─────────────────────────────────────────────
-      const weeklySessions = allSessions.filter(s => {
+      // ── Monthly period sessions ────────────────────────────────────────────
+      const monthlySessions = allSessions.filter(s => {
         if (!s.startTime) return false;
         const d = new Date(s.startTime);
         return d >= periodStart && d < periodEnd;
       });
-      const weekly = aggregateSessions(weeklySessions);
+      const monthly = aggregateSessions(monthlySessions);
 
       const daysElapsed = Math.max(1, (now - periodStart) / (1000 * 60 * 60 * 24));
-      const dailyBurnRate = weekly.cost / daysElapsed;
+      const dailyBurnRate = monthly.cost / daysElapsed;
       const subscriptionCost = cfg.plan?.subscriptionCostPerMonth ?? null;
-      // weekly budget implied from monthly subscription
-      const weeklyBudget = subscriptionCost != null ? subscriptionCost / 4.33 : null;
-      const usagePercent = weeklyBudget != null ? Math.min((weekly.cost / weeklyBudget) * 100, 100) : null;
-      const overageCost = weeklyBudget != null ? Math.max(0, weekly.cost - weeklyBudget) : 0;
-      const daysUntilExhausted = weeklyBudget != null && dailyBurnRate > 0
-        ? Math.max(0, (weeklyBudget - weekly.cost) / dailyBurnRate)
+      const monthlyBudget = subscriptionCost; // $20/month — use directly, no week approximation
+      const usagePercent = monthlyBudget != null ? Math.min((monthly.cost / monthlyBudget) * 100, 100) : null;
+      const overageCost = monthlyBudget != null ? Math.max(0, monthly.cost - monthlyBudget) : 0;
+      const daysUntilExhausted = monthlyBudget != null && dailyBurnRate > 0
+        ? Math.max(0, (monthlyBudget - monthly.cost) / dailyBurnRate)
         : null;
 
       // ── 5-hour rolling window ──────────────────────────────────────────────
@@ -489,26 +486,25 @@ async function createApp(config, sessionManager) {
       res.json({
         periodStart: periodStart.toISOString().slice(0, 10),
         periodEnd: periodEnd.toISOString().slice(0, 10),
-        periodLabel: 'weekly',
+        periodLabel: 'monthly',
         daysRemaining,
         hoursUntilReset,
         minutesUntilReset,
         plan: {
           ...(cfg.plan || {}),
           name: cfg.plan?.name || 'Unknown',
-          // expose as monthlyCostLimit for frontend compat; actual budget is weekly
           monthlyCostLimit: subscriptionCost,
-          weeklyBudget,
+          monthlyBudget,
           paygAfterLimit: cfg.plan?.paygAfterLimit ?? false,
         },
         currentPeriod: {
-          totalTokens: weekly.tokens,
-          totalCost: weekly.cost,
-          sessionCount: weekly.sessionCount,
-          byModel: weekly.byModel,
-          dailyBreakdown: weekly.dailyBreakdown,
+          totalTokens: monthly.tokens,
+          totalCost: monthly.cost,
+          sessionCount: monthly.sessionCount,
+          byModel: monthly.byModel,
+          dailyBreakdown: monthly.dailyBreakdown,
         },
-        includedCost: weeklyBudget != null ? Math.min(weekly.cost, weeklyBudget) : weekly.cost,
+        includedCost: monthlyBudget != null ? Math.min(monthly.cost, monthlyBudget) : monthly.cost,
         overageCost,
         usagePercent,
         dailyBurnRate,

@@ -6,7 +6,7 @@
   "plan": {
     "name": "Claude Code Pro",
     "subscriptionCostPerMonth": 20.00,
-    "weeklyResetDay": 1,
+    "billingAnchorDay": 1,
     "paygAfterLimit": true
   },
   "pricing": {

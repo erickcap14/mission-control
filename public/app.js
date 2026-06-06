@@ -404,7 +404,7 @@ function UsageDashboard({ usageStats }) {
           daysUntilExhausted, fiveHourWindow } = usageStats;
   const { totalTokens, totalCost, sessionCount, byModel, dailyBreakdown } = currentPeriod;
 
-  const weeklyBudget = plan.weeklyBudget;
+  const weeklyBudget = plan.monthlyBudget;
   const hasLimit = weeklyBudget != null;
   const progressColor = usagePercent != null
     ? (usagePercent >= 90 ? '#ff6b6b' : usagePercent >= 70 ? '#ffaa00' : '#00d966')
@@ -441,7 +441,7 @@ function UsageDashboard({ usageStats }) {
 
       hasLimit ? h('div', { className: 'usage-progress-section' },
         h('div', { className: 'usage-progress-labels' },
-          h('span', null, 'this week vs weekly budget'),
+          h('span', null, 'this month vs monthly budget'),
           h('span', null, (usagePercent || 0).toFixed(1) + '%')
         ),
         h('div', { className: 'usage-progress-track' },
@@ -455,12 +455,12 @@ function UsageDashboard({ usageStats }) {
           if (totalCost > weeklyBudget) {
             const daysAgo = Math.round((totalCost - weeklyBudget) / dailyBurnRate);
             return h('div', { className: 'usage-projection' },
-              'weekly budget exceeded ~' + daysAgo + 'd ago'
+              'monthly budget exceeded ~' + daysAgo + 'd ago'
             );
           }
           if (daysUntilExhausted != null) {
             return h('div', { className: 'usage-projection' },
-              'at current burn rate, weekly budget in ~' + Math.round(daysUntilExhausted) + 'd'
+              'at current burn rate, monthly budget in ~' + Math.round(daysUntilExhausted) + 'd'
             );
           }
           return null;
@@ -469,7 +469,7 @@ function UsageDashboard({ usageStats }) {
 
       h('div', { className: 'usage-metrics-row' },
         h('div', { className: 'usage-metric' },
-          h('div', { className: 'usage-metric-label' }, 'Week Cost'),
+          h('div', { className: 'usage-metric-label' }, 'Month Cost'),
           h('div', { className: 'usage-metric-value cost' }, fmtCost(totalCost))
         ),
         h('div', { className: 'usage-metric' },
@@ -487,7 +487,7 @@ function UsageDashboard({ usageStats }) {
       ),
 
       h('div', { className: 'usage-reset-row' },
-        h('div', { className: 'usage-reset-label' }, 'Weekly reset in'),
+        h('div', { className: 'usage-reset-label' }, 'Monthly reset in'),
         h('div', { className: 'usage-countdown' }, resetStr),
         h('div', { className: 'usage-period-range' }, periodStart + ' → ' + periodEnd)
       )
@@ -537,10 +537,10 @@ function UsageDashboard({ usageStats }) {
     ),
 
     overageCost > 0 ? h('div', { className: 'usage-card usage-overage-card' },
-      h('div', { className: 'usage-overage-header' }, 'Over Weekly Budget'),
+      h('div', { className: 'usage-overage-header' }, 'Over Monthly Budget'),
       h('div', { className: 'usage-overage-amount' }, fmtCost(overageCost)),
       h('div', { className: 'usage-overage-desc' },
-        plan.paygAfterLimit ? 'billed as pay-as-you-go' : 'over weekly budget'
+        plan.paygAfterLimit ? 'billed as pay-as-you-go' : 'over monthly budget'
       )
     ) : null,
 
