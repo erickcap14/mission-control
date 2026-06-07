@@ -484,11 +484,13 @@ async function createApp(config, sessionManager) {
       }
 
       // ── Weekly fixed-reset window ──────────────────────────────────────────
-      // Anchored to the most recent `weeklyResetWeekday` (0=Sun) at local midnight.
+      // Anchored to the most recent `weeklyResetWeekday` (0=Sun) at `weeklyResetHour` local time.
       const weeklyResetWeekday = cfg.plan?.weeklyResetWeekday ?? 1;
-      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const weeklyResetHour = cfg.plan?.weeklyResetHour ?? 0;
+      const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), weeklyResetHour);
       const daysSinceReset = (now.getDay() - weeklyResetWeekday + 7) % 7;
       weekStart.setDate(weekStart.getDate() - daysSinceReset);
+      if (weekStart > now) weekStart.setDate(weekStart.getDate() - 7); // reset hour today hasn't passed yet
       const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
       const msUntilWeekReset = weekEnd - now;
       const weeklySessions = allSessions.filter(s => {
