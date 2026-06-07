@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MISSION-CONTROL — LAN Setup Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0a0e27;
+      --panel: #0f1229;
+      --panel2: #151a33;
+      --border: #1a1f3a;
+      --green: #00d966;
+      --amber: #ffaa00;
+      --cyan: #00b4d8;
+      --text: #c8cce0;
+      --muted: #888;
+      --muted2: #666;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .wrap { max-width: 860px; margin: 0 auto; padding: 32px 20px 80px; }
+
+    header { border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+    .title { font-size: 22px; font-weight: 600; letter-spacing: 2px; color: var(--green); }
+    .subtitle { color: var(--muted); margin-top: 6px; font-size: 13px; }
+
+    h2 {
+      font-size: 13px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin: 38px 0 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    h2 .num {
+      display: inline-block;
+      color: var(--bg);
+      background: var(--amber);
+      width: 22px; height: 22px; line-height: 22px;
+      text-align: center;
+      margin-right: 10px;
+      font-weight: 600;
+    }
+    p { margin: 10px 0; }
+    a { color: var(--cyan); }
+    .muted { color: var(--muted); }
+    .small { font-size: 12px; }
+
+    .url-card {
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      padding: 16px 18px;
+      margin: 8px 0 4px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+    .url-card .label { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+    .url-card .value { color: var(--green); font-size: 18px; font-weight: 600; word-break: break-all; }
+
+    ol { padding-left: 0; counter-reset: step; list-style: none; margin: 0; }
+    ol > li {
+      position: relative;
+      padding: 0 0 4px 34px;
+      margin: 16px 0;
+      counter-increment: step;
+    }
+    ol > li::before {
+      content: counter(step);
+      position: absolute; left: 0; top: 0;
+      width: 22px; height: 22px; line-height: 22px;
+      text-align: center;
+      background: var(--panel2);
+      border: 1px solid var(--green);
+      color: var(--green);
+      font-size: 12px;
+    }
+    li .lead { font-weight: 500; }
+
+    pre {
+      position: relative;
+      background: #050814;
+      border: 1px solid var(--border);
+      padding: 12px 44px 12px 14px;
+      margin: 10px 0;
+      overflow-x: auto;
+      color: var(--green);
+      font-size: 13px;
+    }
+    pre code { white-space: pre; }
+    .copy-btn {
+      position: absolute; top: 8px; right: 8px;
+      background: var(--panel2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 10px;
+      letter-spacing: 1px;
+      padding: 4px 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .copy-btn:hover { color: var(--green); border-color: var(--green); }
+    .copy-btn.copied { color: var(--green); border-color: var(--green); }
+
+    .note {
+      background: var(--panel);
+      border-left: 3px solid var(--cyan);
+      padding: 10px 14px;
+      margin: 14px 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .note strong { color: var(--text); }
+    .warn { border-left-color: var(--amber); }
+
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    td code { color: var(--green); }
+
+    code.inline { background: var(--panel2); padding: 1px 5px; color: var(--amber); border: 1px solid var(--border); }
+
+    footer { margin-top: 50px; padding-top: 16px; border-top: 1px solid var(--border); color: var(--muted2); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">▌ MISSION-CONTROL</div>
+      <div class="subtitle">LAN-shared Claude Code analytics — setup &amp; run guide</div>
+    </header>
+
+    <p>
+      MISSION-CONTROL aggregates Claude Code usage from <strong>every device on your local
+      network</strong> into one persistent dashboard. One <em>host</em> machine runs the backend +
+      PostgreSQL; every device (including the host) runs a lightweight <em>collector</em> that pushes
+      its local session data to the host. Any device on the LAN can then view the combined dashboard
+      after logging in. Nothing leaves your network.
+    </p>
+
+    <div class="url-card">
+      <div>
+        <div class="label">Dashboard URL (open on any device on this network)</div>
+        <div class="value" id="dash-url">http://&lt;host-ip&gt;:9000</div>
+      </div>
+      <button class="copy-btn" data-copy-target="dash-url">Copy</button>
+    </div>
+    <p class="small muted" id="url-hint">Log in with the shared <code class="inline">DASHBOARD_PASSWORD</code> set on the host.</p>
+
+    <!-- ───────────────────────── HOST ───────────────────────── -->
+    <h2><span class="num">A</span>On the host device (runs the backend)</h2>
+    <p class="muted small">Do this once, on the single machine that will store everyone's data.</p>
+    <ol>
+      <li>
+        <div class="lead">Install dependencies</div>
+        <pre><code>npm install</code><button class="copy-btn" data-copy="npm install">Copy</button></pre>
+      </li>
+      <li>
+        <div class="lead">Create the secrets file and set a dashboard password</div>
+        <pre><code>cp .env.example .env</code><button class="copy-btn" data-copy="cp .env.example .env">Copy</button></pre>
+        <p class="small muted">Edit <code class="inline">.env</code> and set <code class="inline">DASHBOARD_PASSWORD</code> (and <code class="inline">DATABASE_URL</code> if you changed the Postgres defaults).</p>
+      </li>
+      <li>
+        <div class="lead">Start PostgreSQL and apply the schema</div>
+        <pre><code>docker compose up -d
+npm run db:migrate</code><button class="copy-btn" data-copy="docker compose up -d&#10;npm run db:migrate">Copy</button></pre>
+      </li>
+      <li>
+        <div class="lead">Register the host as a device (prints an API key once)</div>
+        <pre><code>npm run register-device -- --id host --name "Host" --host</code><button class="copy-btn" data-copy='npm run register-device -- --id host --name "Host" --host'>Copy</button></pre>
+        <p class="small muted">Copy the printed key into <code class="inline">collector.config.json</code> (see <code class="inline">collector.config.example.json</code>).</p>
+      </li>
+      <li>
+        <div class="lead">Start everything (Postgres → migrate → backend → host collector)</div>
+        <pre><code>./start.sh</code><button class="copy-btn" data-copy="./start.sh">Copy</button></pre>
+        <p class="small muted">Or use the <code class="inline">missioncontrol</code> shell alias if you set one up. The backend listens on <code class="inline">0.0.0.0:9000</code> (reachable across your LAN).</p>
+      </li>
+    </ol>
+
+    <!-- ───────────────────────── OTHER DEVICES ───────────────────────── -->
+    <h2><span class="num">B</span>On every other device (laptop, desktop, …)</h2>
+    <p class="muted small">Repeat for each additional machine whose Claude Code usage you want to track.</p>
+    <ol>
+      <li>
+        <div class="lead">Clone the repo and install</div>
+        <pre><code>git clone &lt;repo-url&gt; mission_control
+cd mission_control
+npm install</code><button class="copy-btn" data-copy="git clone <repo-url> mission_control&#10;cd mission_control&#10;npm install">Copy</button></pre>
+      </li>
+      <li>
+        <div class="lead">Register this device — run this command <em>on the host</em></div>
+        <pre><code>npm run register-device -- --id macbook-air --name "MacBook Air"</code><button class="copy-btn" data-copy='npm run register-device -- --id macbook-air --name "MacBook Air"'>Copy</button></pre>
+        <p class="small muted">Pick a unique <code class="inline">--id</code> per device. The command prints the device key — you'll paste it in the next step.</p>
+      </li>
+      <li>
+        <div class="lead">Create this device's collector config</div>
+        <pre><code>cp collector.config.example.json collector.config.json</code><button class="copy-btn" data-copy="cp collector.config.example.json collector.config.json">Copy</button></pre>
+        <p class="small muted">Set <code class="inline">backendUrl</code> to <span id="backend-url-hint">the host URL above</span>, plus this device's <code class="inline">deviceId</code>, <code class="inline">deviceName</code>, and the <code class="inline">deviceKey</code> from step 2.</p>
+      </li>
+      <li>
+        <div class="lead">Start the collector</div>
+        <pre><code>npm run collector</code><button class="copy-btn" data-copy="npm run collector">Copy</button></pre>
+        <p class="small muted">Leave it running. It pushes new/changed sessions automatically (and a toolkit snapshot on startup + every 5 min).</p>
+      </li>
+    </ol>
+
+    <!-- ───────────────────────── VIEW ───────────────────────── -->
+    <h2><span class="num">C</span>View the dashboard (any device)</h2>
+    <p>
+      Open the dashboard URL in a browser on any device on this network and log in with the shared
+      <code class="inline">DASHBOARD_PASSWORD</code>:
+    </p>
+    <div class="url-card">
+      <div>
+        <div class="label">Dashboard</div>
+        <div class="value" id="dash-url-2">http://&lt;host-ip&gt;:9000</div>
+      </div>
+      <button class="copy-btn" data-copy-target="dash-url-2">Copy</button>
+    </div>
+    <p class="muted small">Use the top-bar <strong>device filter</strong> (All / per-device) to slice sessions, cost, and the Toolkit view by machine.</p>
+
+    <!-- ───────────────────────── TLS ───────────────────────── -->
+    <h2><span class="num">D</span>Optional: encrypt the connection (untrusted networks)</h2>
+    <p class="small">
+      By default the dashboard is plain HTTP — fine for a trusted home/office LAN. On an untrusted
+      network, enable self-signed TLS so the password and cookie aren't sent in the clear:
+    </p>
+    <ol>
+      <li>
+        <div class="lead">Generate a self-signed certificate (on the host)</div>
+        <pre><code>npm run gen-cert</code><button class="copy-btn" data-copy="npm run gen-cert">Copy</button></pre>
+      </li>
+      <li>
+        <div class="lead">Enable it in <code class="inline">.env</code> and restart</div>
+        <pre><code>TLS_CERT_FILE=./certs/cert.pem
+TLS_KEY_FILE=./certs/key.pem</code><button class="copy-btn" data-copy="TLS_CERT_FILE=./certs/cert.pem&#10;TLS_KEY_FILE=./certs/key.pem">Copy</button></pre>
+        <p class="small muted">The dashboard then serves <code class="inline">https://&lt;host-ip&gt;:9000</code>. Browsers show a one-time self-signed warning. For production-grade TLS, front with nginx/Caddy or use Tailscale.</p>
+      </li>
+    </ol>
+
+    <!-- ───────────────────────── REFERENCE ───────────────────────── -->
+    <h2><span class="num">i</span>Command reference</h2>
+    <table>
+      <thead><tr><th>Command</th><th>What it does</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><td><code>./start.sh</code></td><td>Postgres → migrate → backend → host collector</td><td>host</td></tr>
+        <tr><td><code>npm start</code></td><td>Backend only (no Postgres/collector)</td><td>host</td></tr>
+        <tr><td><code>npm run collector</code></td><td>Push this device's sessions + toolkit</td><td>every device</td></tr>
+        <tr><td><code>npm run register-device</code></td><td>Register a device, print its key</td><td>host</td></tr>
+        <tr><td><code>npm run db:migrate</code></td><td>Apply / update the database schema</td><td>host</td></tr>
+        <tr><td><code>npm run gen-cert</code></td><td>Generate a self-signed TLS certificate</td><td>host</td></tr>
+        <tr><td><code>docker compose up -d</code></td><td>Start local PostgreSQL</td><td>host</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note warn">
+      <strong>Troubleshooting:</strong> If a device can't reach the dashboard, confirm the host backend is
+      running, that you're using the host's LAN IP (not <code class="inline">localhost</code>) from other
+      devices, and that no firewall is blocking port <code class="inline">9000</code>.
+    </div>
+
+    <footer>
+      MISSION-CONTROL · LAN-only, single-owner · This guide is served by the backend at
+      <code class="inline">/guide.html</code> and is reachable without logging in.
+    </footer>
+  </div>
+
+  <script>
+    // Show the real dashboard URL when this page is served by the backend.
+    (function () {
+      var servedByBackend = location.protocol === 'http:' || location.protocol === 'https:';
+      var origin = location.origin; // e.g. http://10.0.0.205:9000
+      if (servedByBackend && origin) {
+        document.getElementById('dash-url').textContent = origin;
+        document.getElementById('dash-url-2').textContent = origin;
+        var bh = document.getElementById('backend-url-hint');
+        if (bh) bh.innerHTML = '<code class="inline">' + origin + '</code>';
+      }
+    })();
+
+    // Copy buttons: either copy literal data-copy text, or the text of a target element.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest('.copy-btn');
+      if (!btn) return;
+      var text = btn.getAttribute('data-copy');
+      if (!text) {
+        var targetId = btn.getAttribute('data-copy-target');
+        if (targetId) text = (document.getElementById(targetId) || {}).textContent || '';
+      }
+      if (!text) return;
+      var done = function () {
+        var original = btn.textContent;
+        btn.textContent = 'Copied';
+        btn.classList.add('copied');
+        setTimeout(function () { btn.textContent = original; btn.classList.remove('copied'); }, 1200);
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, done);
+      } else {
+        var ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta); done();
+      }
+    });
+  </script>
+</body>
+</html>
