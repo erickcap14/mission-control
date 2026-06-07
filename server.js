@@ -661,7 +661,8 @@ async function createApp(config) {
   });
 
   // -------------------------------------------------------------------------
-  // Restore (host-only: launches a terminal on the backend host)
+  // Restore — host sessions are launched via osascript/Ghostty; sessions on
+  // other devices return a manual resume command for the user to run there.
   // -------------------------------------------------------------------------
   app.post('/api/restore/:id', async (req, res) => {
     try {
@@ -676,23 +677,17 @@ async function createApp(config) {
       const session = sessions.find(s => s.id === id);
       if (!session) return errorResponse(res, new Error(`Session not found: ${id}`), 404);
 
-      if (!hostId || session.device !== hostId) {
-        return errorResponse(
-          res,
-          new Error('Restore is only available for sessions on the host device'),
-          400
-        );
-      }
-
       const projectPath = session.projectPath || os.homedir();
       if (projectPath.includes('\0') || projectPath.includes('..')) {
         return errorResponse(res, new Error('Invalid project path'), 400);
       }
 
-      const escapedPath = projectPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-      const escapedId = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+      if (session.device === hostId) {
+        // Host device: launch Ghostty directly via osascript.
+        const escapedPath = projectPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+        const escapedId = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-      const appleScript = `
+        const appleScript = `
 tell application "Ghostty"
   activate
   tell application "System Events"
@@ -706,11 +701,25 @@ tell application "Ghostty"
 end tell
 `.trim();
 
-      const { exec } = await import('child_process');
-      const { promisify } = await import('util');
-      const execAsync = promisify(exec);
-      await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`);
-      res.json({ ok: true });
+        const { exec } = await import('child_process');
+        const { promisify } = await import('util');
+        const execAsync = promisify(exec);
+        await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`);
+        return res.json({ ok: true, mode: 'launched' });
+      }
+
+      // Non-host device: surface the resume command so the user can run it there.
+      const owningDevice = devices.find(d => d.id === session.device);
+      const deviceName = owningDevice?.name || session.device || 'unknown device';
+      const command = `cd "${projectPath}" && claude --resume ${id}`;
+      return res.json({
+        ok: true,
+        mode: 'manual',
+        device: deviceName,
+        deviceId: session.device,
+        projectPath,
+        command
+      });
     } catch (err) {
       errorResponse(res, err);
     }

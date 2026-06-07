@@ -176,6 +176,9 @@ function SessionModal({ session, onClose, onUpdated }) {
   const [summaryText, setSummaryText] = useState(session.summary || '');
   const [currentStatus, setCurrentStatus] = useState(session.status || '');
   const overlayRef = useRef(null);
+  // Resume state: null | { mode, command, device } | { error }
+  const [resumeState, setResumeState] = useState(null);
+  const [resuming, setResuming] = useState(false);
 
   useEffect(() => {
     setSummaryText(session.summary || '');
@@ -223,6 +226,24 @@ function SessionModal({ session, onClose, onUpdated }) {
     }
   }
 
+  async function handleResume() {
+    setResuming(true);
+    setResumeState(null);
+    try {
+      const res = await fetch(`${API}/restore/${session.id}`, { method: 'POST', credentials: 'same-origin' });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setResumeState({ error: data.error || data.message || 'Restore failed' });
+      } else {
+        setResumeState(data);
+      }
+    } catch (err) {
+      setResumeState({ error: err.message || 'Network error' });
+    } finally {
+      setResuming(false);
+    }
+  }
+
   const tok = session.tokens || {};
   const inputCost = session.inputCost != null ? session.inputCost : null;
   const outputCost = session.outputCost != null ? session.outputCost : null;
@@ -241,8 +262,33 @@ function SessionModal({ session, onClose, onUpdated }) {
           h('div', { className: 'modal-title' }, session.id),
           h('div', { className: 'modal-subtitle' }, session.projectPath || '')
         ),
-        h('button', { className: 'modal-close', onClick: onClose }, '✕')
+        h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
+          h('button', {
+            className: 'modal-close',
+            onClick: handleResume,
+            disabled: resuming,
+            title: 'Resume session',
+            style: { fontSize: '11px', color: resuming ? '#444' : '#00d966', letterSpacing: '1px', padding: '0 8px 0 0' }
+          }, resuming ? '...' : 'resume'),
+          h('button', { className: 'modal-close', onClick: onClose }, '✕')
+        )
       ),
+
+      // Resume status (shown below header when a resume attempt has a result)
+      resumeState
+        ? h('div', { className: 'resume-status' },
+            resumeState.error
+              ? h('span', { style: { color: '#ff6b6b', fontSize: '11px' } }, resumeState.error)
+              : resumeState.mode === 'launched'
+                ? h('span', { style: { color: '#00d966', fontSize: '11px' } }, 'launched in Ghostty on host')
+                : h('div', null,
+                    h('div', { style: { fontSize: '10px', color: '#888', marginBottom: '4px', letterSpacing: '0.5px' } },
+                      'run on ' + resumeState.device + ':'
+                    ),
+                    h('code', { className: 'resume-command' }, resumeState.command)
+                  )
+          )
+        : null,
 
       // Overview grid
       h('div', { className: 'modal-section-label' }, 'overview'),
