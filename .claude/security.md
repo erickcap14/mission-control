@@ -45,7 +45,30 @@ Because the backend listens on the LAN (`0.0.0.0:9000`), anyone on the same netw
 
 ---
 
-## 3. Dependency & Supply Chain Security
+## 3. Transport Security (Optional TLS)
+
+The LAN listener is plain HTTP by default. To encrypt traffic between devices and the backend:
+
+**Quick start (self-signed certificate):**
+```bash
+npm run gen-cert          # writes certs/key.pem and certs/cert.pem
+# Add to .env:
+TLS_CERT_FILE=./certs/cert.pem
+TLS_KEY_FILE=./certs/key.pem
+# Restart the backend
+./start.sh
+```
+The backend will log `https://0.0.0.0:<port>` when TLS is active.
+
+**Self-signed caveat:** browsers will show a security warning the first time they connect. You must accept the exception manually. The certificate is valid for ~825 days (matches the Chrome/Safari cap) and includes SANs for `localhost`, `127.0.0.1`, and the host's primary LAN IPv4.
+
+**More robust options (no browser warning):**
+- **Reverse proxy (nginx / Caddy):** front the Node server with a local proxy that holds a CA-signed or ACME certificate. Caddy's `reverse_proxy` + automatic HTTPS is the simplest path if the host has a domain.
+- **Tailscale / WireGuard overlay:** join all devices to a Tailscale tailnet or a WireGuard VPN. Traffic is end-to-end encrypted at the network layer; the Node server itself never touches an untrusted LAN and can remain plain HTTP (`http://100.x.x.x:9000`). This is the lowest-friction option for a purely private setup.
+
+---
+
+## 4. Dependency & Supply Chain Security
 
 > Your project uses code from other developers (dependencies). We need a plan to make sure those dependencies are safe.
 
@@ -54,7 +77,7 @@ Because the backend listens on the LAN (`0.0.0.0:9000`), anyone on the same netw
 
 ---
 
-## 4. Secrets Management & Best Practices
+## 5. Secrets Management & Best Practices
 
 > "Secrets" are sensitive pieces of information like API keys, database passwords, or access tokens. We must **never** write them directly in our code or commit them to version control.
 

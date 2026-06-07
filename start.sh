@@ -53,7 +53,12 @@ fi
 
 # Port: PORT env overrides config.json; falls back to 9000.
 PORT="${PORT:-$(node -p "require('./config.json').port || 9000" 2>/dev/null || echo 9000)}"
-URL="http://localhost:$PORT"
+# Use https when both TLS files are configured; otherwise plain http.
+if [ -n "${TLS_CERT_FILE:-}" ] && [ -n "${TLS_KEY_FILE:-}" ]; then
+  URL="https://localhost:$PORT"
+else
+  URL="http://localhost:$PORT"
+fi
 
 # --- Secrets ----------------------------------------------------------------
 if [ ! -f .env ]; then

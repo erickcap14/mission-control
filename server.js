@@ -758,9 +758,27 @@ async function main() {
   const app = await createApp(config);
   const port = process.env.PORT || config.port || 9000;
 
-  app.listen(port, () => {
-    console.log(`MISSION-CONTROL running on http://0.0.0.0:${port} (reachable on your LAN)`);
-  });
+  const tlsCert = process.env.TLS_CERT_FILE;
+  const tlsKey  = process.env.TLS_KEY_FILE;
+
+  if (tlsCert && tlsKey) {
+    // Optional TLS: both env vars set — attempt to read cert + key.
+    let cert, key;
+    try {
+      [cert, key] = await Promise.all([fs.readFile(tlsCert), fs.readFile(tlsKey)]);
+    } catch (err) {
+      console.error(`Failed to read TLS files (TLS_CERT_FILE=${tlsCert}, TLS_KEY_FILE=${tlsKey}):`, err.message);
+      process.exit(1);
+    }
+    const { createServer } = await import('node:https');
+    createServer({ cert, key }, app).listen(port, () => {
+      console.log(`MISSION-CONTROL running on https://0.0.0.0:${port} (reachable on your LAN)`);
+    });
+  } else {
+    app.listen(port, () => {
+      console.log(`MISSION-CONTROL running on http://0.0.0.0:${port} (reachable on your LAN)`);
+    });
+  }
 }
 
 main().catch(err => {

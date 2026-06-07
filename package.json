@@ -9,7 +9,8 @@
     "dev": "node --watch server.js",
     "collector": "node collector.js",
     "db:migrate": "node scripts/migrate.js",
-    "register-device": "node scripts/register-device.js"
+    "register-device": "node scripts/register-device.js",
+    "gen-cert": "node scripts/gen-tls-cert.js"
   },
   "dependencies": {
     "chokidar": "^3.6.0",
