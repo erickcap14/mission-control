@@ -102,6 +102,104 @@
       box-shadow: 0 0 4px #00d966;
     }
 
+    /* ── DEVICE FILTER ── */
+    .device-filter {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .device-filter-label {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .device-select {
+      background: #0a0e27;
+      border: 1px solid #1a1f3a;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 11px;
+      cursor: pointer;
+      outline: none;
+    }
+    .device-select:focus { border-color: #2a2f5a; }
+
+    .logout-btn {
+      background: transparent;
+      border: 1px solid #1a1f3a;
+      color: #555;
+      padding: 5px 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+      margin-left: 12px;
+    }
+    .logout-btn:hover { color: #ff6b6b; border-color: #3a2030; }
+
+    /* ── LOGIN SCREEN ── */
+    .login-screen {
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .login-box {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: min(360px, 90vw);
+      background: #0f1229;
+      border: 1px solid #1a1f3a;
+      padding: 32px;
+    }
+    .login-logo {
+      font-size: 16px;
+      color: #00d966;
+      letter-spacing: 2px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .login-sub {
+      font-size: 10px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .login-input {
+      background: #0a0e27;
+      border: 1px solid #1a1f3a;
+      color: #e0e0e0;
+      padding: 10px 12px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 13px;
+      outline: none;
+    }
+    .login-input:focus { border-color: #2a2f5a; }
+    .login-btn {
+      background: transparent;
+      border: 1px solid #00d966;
+      color: #00d966;
+      padding: 10px;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .login-btn:hover:not(:disabled) { background: #0d1b12; }
+    .login-btn:disabled { opacity: 0.5; cursor: default; }
+    .login-error {
+      color: #ff6b6b;
+      font-size: 11px;
+      text-align: center;
+    }
+
     /* ── MAIN LAYOUT ── */
     .main-layout {
       display: flex;

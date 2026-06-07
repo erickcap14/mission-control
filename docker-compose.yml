@@ -1,0 +1,23 @@
+# Local Postgres for MISSION-CONTROL (runs on the host device).
+# Start with: docker compose up -d
+services:
+  postgres:
+    image: postgres:16
+    container_name: mission-control-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mission
+      POSTGRES_PASSWORD: mission
+      POSTGRES_DB: mission_control
+    ports:
+      - "5432:5432"
+    volumes:
+      - mc_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mission -d mission_control"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mc_pgdata:

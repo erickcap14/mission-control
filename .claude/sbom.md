@@ -14,16 +14,15 @@ This section provides a comprehensive view of all approved technologies, framewo
 
 | Category            | Component Name          | Version   | Rationale / Usage                                           |
 | :------------------ | :---------------------- | :-------- | :---------------------------------------------------------- |
-| **Language**        | `Python`                | `3.11`    | _Example: For local data processing scripts._               |
-| **Language**        | `TypeScript`            | `5.3`     | _Example: The primary language for the web app._            |
-| **Runtime**         | `Node.js`               | `20.x`    | _Example: The environment for running the web application._ |
-| **Framework**       | `Next.js`               | `^14.2.0` | _Example: The core web framework for the app._              |
-| **Database**        | `MySQL`                 | `8.0`     | _Example: For storing data on a local machine._             |
-| **Database Client** | `@supabase/supabase-js` | `^2.43.0` | _Example: The primary client for database interactions._    |
-| **Key Library**     | `Pillow`                | `10.1.0`  | _Example: Required for all image manipulation._             |
-| **Key Library**     | `zod`                   | `^3.23.0` | _Example: Required for all server-side data validation._    |
-| **UI Library**      | `React`                 | `18.2.0`  | _Example: The core library for building user interfaces._   |
-| **Styling**         | `Tailwind CSS`          | `3.4`     | _Example: The primary utility for all styling._             |
+| **Language**        | `JavaScript (Node ESM)` | —         | Single language across backend, collector, and frontend.    |
+| **Runtime**         | `Node.js`               | `>= 18`   | Backend, collector, and scripts. Requires global `fetch` (Node 18+). |
+| **Framework**       | `express`               | `^4.18.2` | HTTP server: ingest, read APIs, static hosting, SSE.        |
+| **Database**        | `PostgreSQL`            | `16`      | Persistent store on the host (run via Docker Compose).      |
+| **Database Client** | `pg`                    | `^8.13.1` | PostgreSQL driver / connection pool (`lib/db.js`).          |
+| **Key Library**     | `chokidar`              | `^3.6.0`  | File watcher for `~/.claude/**/*.jsonl` in the collector.   |
+| **UI Library**      | `React`                 | `18.x`    | CDN UMD build, `React.createElement` (no JSX, no bundler).  |
+| **Infra**           | `Docker / Compose`      | —         | Runs local PostgreSQL on the host (`docker-compose.yml`).   |
+| **Built-ins (no dep)** | `crypto`, `fs`, `readline` | —    | Auth hashing/cookies, `.env` loader, JSONL streaming — used **instead of** `bcrypt`/`express-session`/`dotenv` to keep the dependency surface small. |
 
 ---
 

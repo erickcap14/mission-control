@@ -7,17 +7,27 @@ Purpose: Runtime environment, tech stack, coding conventions, and data architect
 ## What We're Building
 
 - **Programming Language:** JavaScript (Node.js ESM)
-- **Main Framework/Tool:** Express 4.x (backend), React 18 via CDN (frontend)
-- **Quick Summary:** A local-only analytics dashboard that reads Claude Code session JSONL files and serves a web UI on port 9000.
+- **Main Framework/Tool:** Express 4.x (backend), PostgreSQL (storage), React 18 via CDN (frontend)
+- **Quick Summary:** A LAN-shared analytics dashboard. One host runs the Express backend + PostgreSQL; per-device collectors push Claude Code session data to it; any device on the LAN views the aggregated UI on port 9000.
 
 ---
 
-## How to Run it Locally
+## How to Run it (host device)
 
-- **Installation:** `npm install`
-- **Startup:** `npm start` (or `node server.js`)
-- **Local Address:** `http://localhost:9000`
-- **Start Script:** `start.sh` (available at project root)
+1. **Install:** `npm install`
+2. **Secrets:** `cp .env.example .env`, then set `DATABASE_URL` and `DASHBOARD_PASSWORD`
+3. **Database:** `docker compose up -d` (starts local PostgreSQL), then `npm run db:migrate`
+4. **Register devices:** `npm run register-device -- --id host --name "Host" --host` (repeat per device, without `--host`). Copy each printed key into that device's `collector.config.json`.
+5. **Start backend:** `npm start` (listens on `0.0.0.0:9000`; `PORT` env overrides the config port)
+6. **Start the host's own collector:** `npm run collector`
+
+## How to Run it (every other device)
+
+1. Clone the repo, `npm install`
+2. `cp collector.config.example.json collector.config.json` and set `backendUrl` to `http://<host-ip>:9000`, plus this device's `deviceId`/`deviceKey`
+3. `npm run collector`
+
+- **Dashboard Address (any LAN device):** `http://<host-ip>:9000` (login with `DASHBOARD_PASSWORD`)
 
 ---
 
@@ -38,11 +48,28 @@ mission-control/
     app.js               # React 18 app via React.createElement (no JSX, no build step)
 ```
 
+New in v0.2 (backend/collector):
+```
+  server.js              # Express backend: ingest + Postgres-backed reads + auth + SSE
+  collector.js           # Per-device agent: reads local ~/.claude, pushes to backend
+  db/schema.sql          # PostgreSQL schema (devices, sessions, session_meta)
+  docker-compose.yml     # Local PostgreSQL for the host
+  lib/
+    db.js                # pg Pool wrapper (upsert/read/meta)
+    auth.js              # device-key + dashboard-cookie auth (Node crypto only)
+    env.js               # minimal .env loader (no dependency)
+  scripts/
+    migrate.js           # apply db/schema.sql
+    register-device.js   # register a device, print its key once
+  collector.config.json  # per-device: backendUrl, deviceId, deviceKey (git-ignored)
+```
+
 **Important constraints:**
 - No build step — frontend is loaded directly from `public/` as static files
 - No JSX — use `React.createElement` in `app.js`
 - No frontend bundler (webpack/vite/etc.) — keep it zero-dependency for the frontend
 - Node.js native `readline` for streaming JSONL (no external JSON stream library)
+- Backend dependencies kept minimal: `pg` is the only addition; auth/cookies/env use Node's built-in `crypto`/`fs` (no `bcrypt`, `express-session`, or `dotenv`)
 
 ---
 
@@ -60,20 +87,21 @@ mission-control/
 
 ## Where it Lives
 
-- **Hosting:** Local machine only. No cloud deployment.
-- **Process:** Runs as a `node` process, typically started manually or via `start.sh`
-- **Port:** 9000 (configurable in `config.json`)
+- **Hosting:** One host machine on your LAN. No public-internet/cloud deployment — the listener is reachable only by devices on the same network.
+- **Processes:** the Express backend (`node server.js`) + a PostgreSQL container (Docker) on the host; a `node collector.js` process on each device.
+- **Port:** backend on `0.0.0.0:9000` (config `port`, overridable by `PORT` env); PostgreSQL on `5432` (host-local, per `docker-compose.yml`).
 
 ---
 
 ## Where Data Lives
 
-- **Session data:** Read-only from `~/.claude/projects/<encoded-path>/*.jsonl`
-  - Claude Code writes these files; MISSION-CONTROL only reads them
-  - Encoding: real path with `/` and `_` replaced by `-`
-- **Metadata (status, summaries):** In-memory only in v0.1 (see MC-01, MC-02 in tasks.md for persistence plan)
-- **Configuration:** `config.json` at project root (written by `PUT /api/config`)
-- **Cache:** In-memory `Map` in `SessionManager`; keyed by file path + mtime
+- **Source of truth:** PostgreSQL on the host (survives restarts).
+  - `devices` — id, display name, scrypt-hashed key, `is_host` flag, last_seen
+  - `sessions` — PK `(device_id, session_id)`; full session object in `data JSONB` + promoted `project_path/model/cost/start_time/end_time` columns
+  - `session_meta` — user status/summary edits, kept separate so re-ingestion never clobbers them
+- **Upstream raw data:** each device's `~/.claude/projects/<encoded-path>/*.jsonl` (read-only) — collectors parse these and push to the backend.
+- **Configuration:** shared `config.json` (pricing/plan, written by `PUT /api/config`); secrets in `.env` (`DATABASE_URL`, `DASHBOARD_PASSWORD`, optional `SESSION_SECRET`); per-device `collector.config.json`.
+- **Cache:** the collector keeps an mtime/fingerprint map to push only changed sessions; the backend reads live from Postgres.
 
 **Schema — Session object:**
 ```js
@@ -93,9 +121,12 @@ mission-control/
   toolCalls: [{ name: string, count: number }],
   startTime: Date,
   endTime: Date,
-  summary: string,        // auto-generated or user-edited
+  summary: string,        // auto-generated or user-edited (session_meta wins on read)
   subagentCount: number,
-  subagentModels: { [modelKey]: number }
+  subagentModels: { [modelKey]: number },
+  projectPath: string,    // real filesystem path of the project
+  status: string | null,  // "wip" | "complete" | null (from session_meta)
+  device: string          // owning device id (added by the backend on read)
 }
 ```
 

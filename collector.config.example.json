@@ -1,0 +1,8 @@
+{
+  "backendUrl": "http://192.168.1.50:9000",
+  "deviceId": "macbook-air",
+  "deviceName": "MacBook Air",
+  "deviceKey": "PASTE_THE_KEY_FROM_register-device_HERE",
+  "claudeDir": "~/.claude",
+  "scanPath": "~/Documents"
+}

@@ -1,17 +1,32 @@
 /**
- * MISSION-CONTROL — Express server
- * Local analytics dashboard for Claude Code sessions.
+ * MISSION-CONTROL — Express server (LAN-shared, Postgres-backed).
+ *
+ * Aggregates Claude Code session analytics pushed by per-device collectors.
+ * Reads come from Postgres; the aggregation logic is unchanged from the original
+ * file-based version — only the data source moved. Ingest is device-key
+ * authenticated; the dashboard + read APIs require a login cookie.
  */
+
+import { loadEnv } from './lib/env.js';
+loadEnv();
 
 import express from 'express';
 import { EventEmitter } from 'events';
 import { promises as fs } from 'fs';
-import { createRequire } from 'module';
 import path from 'path';
 import os from 'os';
 import { fileURLToPath } from 'url';
-import chokidar from 'chokidar';
-import SessionManager from './lib/sessionManager.js';
+import {
+  migrate,
+  upsertSessions,
+  touchDevice,
+  getAllSessions,
+  getDevices,
+  setMeta,
+  findSessionDevice,
+} from './lib/db.js';
+import { calculateTimeSaved } from './lib/costCalculator.js';
+import { deviceAuth, dashboardAuth, loginHandler, logoutHandler } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.join(__dirname, 'config.json');
@@ -20,11 +35,6 @@ const CONFIG_PATH = path.join(__dirname, 'config.json');
 // Helpers
 // ---------------------------------------------------------------------------
 
-/**
- * Expands a leading `~` to the user's home directory.
- * @param {string} p
- * @returns {string}
- */
 function expandHome(p) {
   if (!p) return p;
   if (p === '~' || p.startsWith('~/') || p.startsWith('~\\')) {
@@ -33,41 +43,19 @@ function expandHome(p) {
   return p;
 }
 
-/**
- * Loads config.json from disk, expanding ~ in path fields.
- * @returns {Promise<object>}
- */
 async function loadConfig() {
-  const raw = await fs.readFile(CONFIG_PATH, 'utf8');
-  const cfg = JSON.parse(raw);
-  return cfg;
+  return JSON.parse(await fs.readFile(CONFIG_PATH, 'utf8'));
 }
 
-/**
- * Saves config object back to config.json.
- * @param {object} cfg
- */
 async function saveConfig(cfg) {
   await fs.writeFile(CONFIG_PATH, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
 }
 
-/**
- * Sends a JSON error response.
- * @param {import('express').Response} res
- * @param {Error|string} err
- * @param {number} [status=500]
- */
 function errorResponse(res, err, status = 500) {
   const message = err instanceof Error ? err.message : String(err);
   res.status(status).json({ error: message });
 }
 
-/**
- * Fuzzy-matches a string against a query (case-insensitive substring).
- * @param {string} text
- * @param {string} query
- * @returns {boolean}
- */
 function fuzzyMatch(text, query) {
   if (!query) return true;
   return String(text || '').toLowerCase().includes(query.toLowerCase());
@@ -75,13 +63,9 @@ function fuzzyMatch(text, query) {
 
 /**
  * Sorts sessions array in place based on sort/order params.
- * @param {object[]} sessions
- * @param {string} sort - date|tokens|cost|duration
- * @param {string} order - asc|desc
  */
 function sortSessions(sessions, sort = 'date', order = 'desc') {
   const dir = order === 'asc' ? 1 : -1;
-
   sessions.sort((a, b) => {
     let valA, valB;
     switch (sort) {
@@ -109,57 +93,97 @@ function sortSessions(sessions, sort = 'date', order = 'desc') {
   });
 }
 
+/**
+ * Derives per-project aggregates from a session array (replaces filesystem
+ * project discovery — projects now come from whatever has been ingested).
+ */
+function aggregateProjects(sessions) {
+  const map = new Map();
+  for (const s of sessions) {
+    const key = s.projectPath || 'unknown';
+    if (!map.has(key)) {
+      map.set(key, {
+        name: key === 'unknown' ? 'unknown' : path.basename(key),
+        path: key,
+        sessionCount: 0,
+        totalCost: 0,
+        totalTokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        totalDuration: 0,
+        modelBreakdown: {},
+      });
+    }
+    const p = map.get(key);
+    p.sessionCount++;
+    p.totalCost += s.cost || 0;
+    p.totalDuration += s.duration || 0;
+    p.totalTokens.input += s.tokens?.input || 0;
+    p.totalTokens.output += s.tokens?.output || 0;
+    p.totalTokens.cacheRead += s.tokens?.cacheRead || 0;
+    p.totalTokens.cacheWrite += s.tokens?.cacheWrite || 0;
+    if (s.model) p.modelBreakdown[s.model] = (p.modelBreakdown[s.model] || 0) + 1;
+  }
+  return [...map.values()].sort((a, b) => b.totalCost - a.totalCost);
+}
+
 // ---------------------------------------------------------------------------
 // Change emitter (for SSE)
 // ---------------------------------------------------------------------------
 export const changeEmitter = new EventEmitter();
 
 // ---------------------------------------------------------------------------
-// File watcher
-// ---------------------------------------------------------------------------
-function startWatcher(config, sessionManager) {
-  const claudeDir = expandHome(config.claudeDir || '~/.claude');
-  const watchGlob = path.join(claudeDir, 'projects', '**', '*.jsonl');
-
-  const watcher = chokidar.watch(watchGlob, {
-    usePolling: true,
-    interval: 2000,
-    persistent: false,
-    ignoreInitial: true,
-  });
-
-  const handleChange = (filePath) => {
-    sessionManager.invalidateSession(filePath);
-    changeEmitter.emit('change', filePath);
-  };
-
-  watcher.on('add', handleChange);
-  watcher.on('change', handleChange);
-  watcher.on('unlink', (filePath) => {
-    sessionManager.invalidateSession(filePath);
-    changeEmitter.emit('change', filePath);
-  });
-
-  return watcher;
-}
-
-// ---------------------------------------------------------------------------
 // App factory
 // ---------------------------------------------------------------------------
-async function createApp(config, sessionManager) {
+async function createApp(config) {
   const app = express();
+  app.use(express.json({ limit: '25mb' })); // ingest batches can be large
 
-  app.use(express.json());
+  // -------------------------------------------------------------------------
+  // Auth: login (open), then everything below requires a session cookie —
+  // except /api/ingest/* (device-key auth) and /health.
+  // -------------------------------------------------------------------------
+  app.post('/api/login', loginHandler);
+  app.post('/api/logout', logoutHandler);
+
+  app.get('/health', async (_req, res) => {
+    try {
+      const packageJson = JSON.parse(
+        await fs.readFile(path.join(__dirname, 'package.json'), 'utf8')
+      );
+      res.json({ status: 'ok', version: packageJson.version, uptimeSeconds: Math.floor(process.uptime()) });
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Ingest (device-key auth) — collectors push session batches here.
+  // -------------------------------------------------------------------------
+  app.post('/api/ingest/sessions', deviceAuth, async (req, res) => {
+    try {
+      const sessions = Array.isArray(req.body?.sessions) ? req.body.sessions : [];
+      await upsertSessions(req.deviceId, sessions);
+      await touchDevice(req.deviceId);
+      changeEmitter.emit('change');
+      res.json({ ok: true, ingested: sessions.length });
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Dashboard gate: all /api reads below require login. The static SPA shell
+  // itself is not sensitive (it shows a login form when the data APIs 401), so
+  // it is served openly.
+  // -------------------------------------------------------------------------
   app.use(express.static(path.join(__dirname, 'public')));
+  app.use('/api', dashboardAuth);
 
   // -------------------------------------------------------------------------
   // Config endpoints
   // -------------------------------------------------------------------------
-
   app.get('/api/config', async (_req, res) => {
     try {
-      const cfg = await loadConfig();
-      res.json(cfg);
+      res.json(await loadConfig());
     } catch (err) {
       errorResponse(res, err);
     }
@@ -170,9 +194,7 @@ async function createApp(config, sessionManager) {
       const current = await loadConfig();
       const updated = { ...current, ...req.body };
       await saveConfig(updated);
-      // Refresh in-memory config
       Object.assign(config, updated);
-      Object.assign(sessionManager.config, updated);
       res.json(updated);
     } catch (err) {
       errorResponse(res, err);
@@ -180,67 +202,45 @@ async function createApp(config, sessionManager) {
   });
 
   // -------------------------------------------------------------------------
-  // Project endpoints
+  // Devices
   // -------------------------------------------------------------------------
-
-  app.get('/api/projects', async (_req, res) => {
+  app.get('/api/devices', async (_req, res) => {
     try {
-      const { discoverProjects } = await import('./lib/projectDiscovery.js');
-      const projects = await discoverProjects(expandHome(config.scanPath || '~/Documents'));
-
-      const result = [];
-      for (const project of projects) {
-        const stats = await sessionManager.getProjectStats(project.path);
-        result.push({
-          name: project.name,
-          path: project.path,
-          sessionCount: stats.sessionCount,
-          totalCost: stats.totalCost,
-          totalTokens: stats.totalTokens,
-          totalDuration: stats.totalDuration,
-          modelBreakdown: stats.modelBreakdown,
-        });
-      }
-
-      res.json(result);
+      res.json(await getDevices());
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
   // -------------------------------------------------------------------------
-  // Session endpoints
+  // Projects (derived from ingested sessions)
   // -------------------------------------------------------------------------
+  app.get('/api/projects', async (req, res) => {
+    try {
+      const sessions = await getAllSessions({ device: req.query.device });
+      res.json(aggregateProjects(sessions));
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
 
-  /**
-   * Shared logic: gather sessions (optionally filtered by projectPath),
-   * apply search/sort/order.
-   */
+  // -------------------------------------------------------------------------
+  // Sessions
+  // -------------------------------------------------------------------------
   async function querySessions(query) {
-    const { projectPath, sort = 'date', order = 'desc', search = '' } = query;
-
-    let sessions;
-    if (projectPath) {
-      sessions = await sessionManager.getProjectSessions(projectPath);
-    } else {
-      sessions = await sessionManager.getAllSessions();
-    }
-
-    // Apply search filter
+    const { projectPath, sort = 'date', order = 'desc', search = '', device } = query;
+    let sessions = await getAllSessions({ device });
+    if (projectPath) sessions = sessions.filter(s => s.projectPath === projectPath);
     if (search) {
-      sessions = sessions.filter(
-        s => fuzzyMatch(s.summary, search) || fuzzyMatch(s.id, search)
-      );
+      sessions = sessions.filter(s => fuzzyMatch(s.summary, search) || fuzzyMatch(s.id, search));
     }
-
     sortSessions(sessions, sort, order);
     return sessions;
   }
 
   app.get('/api/sessions', async (req, res) => {
     try {
-      const sessions = await querySessions(req.query);
-      res.json(sessions);
+      res.json(await querySessions(req.query));
     } catch (err) {
       errorResponse(res, err);
     }
@@ -248,16 +248,11 @@ async function createApp(config, sessionManager) {
 
   app.get('/api/sessions/all', async (req, res) => {
     try {
-      // Ignore projectPath for "all" endpoint
-      const { sort = 'date', order = 'desc', search = '' } = req.query;
-      let sessions = await sessionManager.getAllSessions();
-
+      const { sort = 'date', order = 'desc', search = '', device } = req.query;
+      let sessions = await getAllSessions({ device });
       if (search) {
-        sessions = sessions.filter(
-          s => fuzzyMatch(s.summary, search) || fuzzyMatch(s.id, search)
-        );
+        sessions = sessions.filter(s => fuzzyMatch(s.summary, search) || fuzzyMatch(s.id, search));
       }
-
       sortSessions(sessions, sort, order);
       res.json(sessions);
     } catch (err) {
@@ -267,14 +262,9 @@ async function createApp(config, sessionManager) {
 
   app.get('/api/sessions/:id', async (req, res) => {
     try {
-      const { id } = req.params;
-      const all = await sessionManager.getAllSessions();
-      const session = all.find(s => s.id === id);
-
-      if (!session) {
-        return errorResponse(res, new Error(`Session not found: ${id}`), 404);
-      }
-
+      const sessions = await getAllSessions({ device: req.query.device });
+      const session = sessions.find(s => s.id === req.params.id);
+      if (!session) return errorResponse(res, new Error(`Session not found: ${req.params.id}`), 404);
       res.json(session);
     } catch (err) {
       errorResponse(res, err);
@@ -284,8 +274,10 @@ async function createApp(config, sessionManager) {
   app.put('/api/sessions/:id/status', async (req, res) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
-      sessionManager.setMeta(id, { status });
+      const device = req.body.device || req.query.device || (await findSessionDevice(id));
+      if (!device) return errorResponse(res, new Error(`Session not found: ${id}`), 404);
+      await setMeta(device, id, { status: req.body.status });
+      changeEmitter.emit('change');
       res.json({ ok: true });
     } catch (err) {
       errorResponse(res, err);
@@ -295,8 +287,10 @@ async function createApp(config, sessionManager) {
   app.put('/api/sessions/:id/summary', async (req, res) => {
     try {
       const { id } = req.params;
-      const { summary } = req.body;
-      sessionManager.setMeta(id, { summary });
+      const device = req.body.device || req.query.device || (await findSessionDevice(id));
+      if (!device) return errorResponse(res, new Error(`Session not found: ${id}`), 404);
+      await setMeta(device, id, { summary: req.body.summary });
+      changeEmitter.emit('change');
       res.json({ ok: true });
     } catch (err) {
       errorResponse(res, err);
@@ -304,21 +298,34 @@ async function createApp(config, sessionManager) {
   });
 
   // -------------------------------------------------------------------------
-  // Stats endpoints
+  // Stats
   // -------------------------------------------------------------------------
-
-  app.get('/api/stats', async (_req, res) => {
+  app.get('/api/stats', async (req, res) => {
     try {
-      const stats = await sessionManager.getAllStats();
-      res.json(stats);
+      const sessions = await getAllSessions({ device: req.query.device });
+      const projectPaths = new Set();
+      let totalCost = 0;
+      let totalDuration = 0;
+      for (const s of sessions) {
+        if (s.projectPath) projectPaths.add(s.projectPath);
+        totalCost += s.cost || 0;
+        totalDuration += s.duration || 0;
+      }
+      res.json({
+        projectCount: projectPaths.size,
+        sessionCount: sessions.length,
+        totalCost,
+        totalDuration,
+        timeSaved: calculateTimeSaved(totalDuration, config.timeSavedMultiplier || 2.5),
+      });
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
-  app.get('/api/daily-stats', async (_req, res) => {
+  app.get('/api/daily-stats', async (req, res) => {
     try {
-      const sessions = await sessionManager.getAllSessions();
+      const sessions = await getAllSessions({ device: req.query.device });
       const cutoff = new Date();
       cutoff.setDate(cutoff.getDate() - 90);
 
@@ -327,26 +334,20 @@ async function createApp(config, sessionManager) {
         if (!s.startTime) continue;
         const d = new Date(s.startTime);
         if (d < cutoff) continue;
-
-        const dateStr = d.toISOString().slice(0, 10); // YYYY-MM-DD
+        const dateStr = d.toISOString().slice(0, 10);
         if (!byDate[dateStr]) byDate[dateStr] = { date: dateStr, cost: 0, tokens: 0 };
         byDate[dateStr].cost += s.cost || 0;
-        byDate[dateStr].tokens +=
-          (s.tokens?.input || 0) + (s.tokens?.output || 0);
+        byDate[dateStr].tokens += (s.tokens?.input || 0) + (s.tokens?.output || 0);
       }
-
-      const result = Object.values(byDate).sort((a, b) =>
-        b.date.localeCompare(a.date)
-      );
-      res.json(result);
+      res.json(Object.values(byDate).sort((a, b) => b.date.localeCompare(a.date)));
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
-  app.get('/api/monthly-stats', async (_req, res) => {
+  app.get('/api/monthly-stats', async (req, res) => {
     try {
-      const sessions = await sessionManager.getAllSessions();
+      const sessions = await getAllSessions({ device: req.query.device });
       const cutoff = new Date();
       cutoff.setMonth(cutoff.getMonth() - 12);
 
@@ -355,34 +356,27 @@ async function createApp(config, sessionManager) {
         if (!s.startTime) continue;
         const d = new Date(s.startTime);
         if (d < cutoff) continue;
-
-        const monthStr = d.toISOString().slice(0, 7); // YYYY-MM
+        const monthStr = d.toISOString().slice(0, 7);
         if (!byMonth[monthStr]) byMonth[monthStr] = { month: monthStr, cost: 0, tokens: 0 };
         byMonth[monthStr].cost += s.cost || 0;
-        byMonth[monthStr].tokens +=
-          (s.tokens?.input || 0) + (s.tokens?.output || 0);
+        byMonth[monthStr].tokens += (s.tokens?.input || 0) + (s.tokens?.output || 0);
       }
-
-      const result = Object.values(byMonth).sort((a, b) =>
-        b.month.localeCompare(a.month)
-      );
-      res.json(result);
+      res.json(Object.values(byMonth).sort((a, b) => b.month.localeCompare(a.month)));
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
-  // Usage stats: monthly billing period + 5-hour rolling window
-  app.get('/api/usage-stats', async (_req, res) => {
+  // Usage stats: monthly billing period + 5-hour rolling + weekly windows.
+  app.get('/api/usage-stats', async (req, res) => {
     try {
-      const cfg = sessionManager.config;
+      const cfg = config;
       const now = new Date();
 
       // ── Monthly billing period (anchored to billingAnchorDay of each month) ──
-      const anchorDay = cfg.plan?.billingAnchorDay ?? 1; // day-of-month the subscription renews
+      const anchorDay = cfg.plan?.billingAnchorDay ?? 1;
       let periodStart = new Date(now.getFullYear(), now.getMonth(), anchorDay);
       if (periodStart > now) {
-        // anchor hasn't occurred yet this month — go back one month
         periodStart = new Date(now.getFullYear(), now.getMonth() - 1, anchorDay);
       }
       const periodEnd = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, anchorDay);
@@ -392,9 +386,8 @@ async function createApp(config, sessionManager) {
       const hoursUntilReset = Math.floor(msUntilReset / (1000 * 60 * 60));
       const minutesUntilReset = Math.floor((msUntilReset % (1000 * 60 * 60)) / (1000 * 60));
 
-      const allSessions = await sessionManager.getAllSessions();
+      const allSessions = await getAllSessions({ device: req.query.device });
 
-      // ── Aggregate helper ───────────────────────────────────────────────────
       function aggregateSessions(sessions) {
         const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
         let cost = 0;
@@ -437,7 +430,6 @@ async function createApp(config, sessionManager) {
         return { tokens, cost, sessionCount: sessions.length, byModel, dailyBreakdown };
       }
 
-      // ── Monthly period sessions ────────────────────────────────────────────
       const monthlySessions = allSessions.filter(s => {
         if (!s.startTime) return false;
         const d = new Date(s.startTime);
@@ -448,14 +440,14 @@ async function createApp(config, sessionManager) {
       const daysElapsed = Math.max(1, (now - periodStart) / (1000 * 60 * 60 * 24));
       const dailyBurnRate = monthly.cost / daysElapsed;
       const subscriptionCost = cfg.plan?.subscriptionCostPerMonth ?? null;
-      const monthlyBudget = subscriptionCost; // $20/month — use directly, no week approximation
+      const monthlyBudget = subscriptionCost;
       const usagePercent = monthlyBudget != null ? Math.min((monthly.cost / monthlyBudget) * 100, 100) : null;
       const overageCost = monthlyBudget != null ? Math.max(0, monthly.cost - monthlyBudget) : 0;
       const daysUntilExhausted = monthlyBudget != null && dailyBurnRate > 0
         ? Math.max(0, (monthlyBudget - monthly.cost) / dailyBurnRate)
         : null;
 
-      // ── 5-hour rolling window ──────────────────────────────────────────────
+      // ── 5-hour rolling window ──
       const fiveHoursMs = 5 * 60 * 60 * 1000;
       const fiveHoursAgo = new Date(now - fiveHoursMs);
       const recentSessions = allSessions
@@ -464,7 +456,6 @@ async function createApp(config, sessionManager) {
 
       let fiveHourWindow = null;
       if (recentSessions.length > 0) {
-        // window anchors to the oldest session start in the last 5h
         const windowStart = new Date(recentSessions[0].startTime);
         const windowEnd = new Date(windowStart.getTime() + fiveHoursMs);
         const msUntilWindowReset = windowEnd - now;
@@ -483,14 +474,13 @@ async function createApp(config, sessionManager) {
         };
       }
 
-      // ── Weekly fixed-reset window ──────────────────────────────────────────
-      // Anchored to the most recent `weeklyResetWeekday` (0=Sun) at `weeklyResetHour` local time.
+      // ── Weekly fixed-reset window ──
       const weeklyResetWeekday = cfg.plan?.weeklyResetWeekday ?? 1;
       const weeklyResetHour = cfg.plan?.weeklyResetHour ?? 0;
       const weekStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), weeklyResetHour);
       const daysSinceReset = (now.getDay() - weeklyResetWeekday + 7) % 7;
       weekStart.setDate(weekStart.getDate() - daysSinceReset);
-      if (weekStart > now) weekStart.setDate(weekStart.getDate() - 7); // reset hour today hasn't passed yet
+      if (weekStart > now) weekStart.setDate(weekStart.getDate() - 7);
       const weekEnd = new Date(weekStart.getTime() + 7 * 24 * 60 * 60 * 1000);
       const msUntilWeekReset = weekEnd - now;
       const weeklySessions = allSessions.filter(s => {
@@ -549,78 +539,69 @@ async function createApp(config, sessionManager) {
   });
 
   // -------------------------------------------------------------------------
-  // Other endpoints
+  // Active / WIP
   // -------------------------------------------------------------------------
-
-  app.get('/api/active', async (_req, res) => {
+  app.get('/api/active', async (req, res) => {
     try {
-      const sessions = await sessionManager.getAllSessions();
-      const sixtySecondsAgo = Date.now() - 60_000;
-
-      const { promises: fsProm } = await import('fs');
-      const active = [];
-
-      for (const s of sessions) {
-        try {
-          const stat = await fsProm.stat(s.filePath);
-          if (stat.mtimeMs >= sixtySecondsAgo) {
-            active.push(s);
-          }
-        } catch {
-          // File may have been deleted
-        }
-      }
-
+      const sessions = await getAllSessions({ device: req.query.device });
+      const cutoff = Date.now() - 60_000;
+      const active = sessions.filter(s => s.endTime && new Date(s.endTime).getTime() >= cutoff);
       res.json(active);
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
-  app.get('/api/wip', async (_req, res) => {
+  app.get('/api/wip', async (req, res) => {
     try {
-      const sessions = await sessionManager.getAllSessions();
-      const wip = sessions.filter(s => s.status === 'wip');
-      res.json(wip);
+      const sessions = await getAllSessions({ device: req.query.device });
+      res.json(sessions.filter(s => s.status === 'wip'));
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Toolkit (host-local: scans the backend host's filesystem)
+  // -------------------------------------------------------------------------
   app.get('/api/toolkit', async (_req, res) => {
     try {
       const { scanToolkit } = await import('./lib/toolkitScanner.js');
-      const data = await scanToolkit(config);
-      res.json(data);
+      res.json(await scanToolkit(config));
     } catch (err) {
       errorResponse(res, err);
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Restore (host-only: launches a terminal on the backend host)
+  // -------------------------------------------------------------------------
   app.post('/api/restore/:id', async (req, res) => {
     try {
       const { id } = req.params;
-
-      // Validate session ID: must be UUID-like (alphanumeric + dashes only)
       if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
         return errorResponse(res, new Error('Invalid session ID'), 400);
       }
 
-      const all = await sessionManager.getAllSessions();
-      const session = all.find(s => s.id === id);
+      const devices = await getDevices();
+      const hostId = devices.find(d => d.isHost)?.id;
+      const sessions = await getAllSessions({});
+      const session = sessions.find(s => s.id === id);
+      if (!session) return errorResponse(res, new Error(`Session not found: ${id}`), 404);
 
-      if (!session) {
-        return errorResponse(res, new Error(`Session not found: ${id}`), 404);
+      if (!hostId || session.device !== hostId) {
+        return errorResponse(
+          res,
+          new Error('Restore is only available for sessions on the host device'),
+          400
+        );
       }
 
       const projectPath = session.projectPath || os.homedir();
-
-      // Reject paths with null bytes or path traversal attempts
       if (projectPath.includes('\0') || projectPath.includes('..')) {
         return errorResponse(res, new Error('Invalid project path'), 400);
       }
 
-      // Escape for AppleScript string: backslash-escape backslashes then double-quotes
       const escapedPath = projectPath.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
       const escapedId = id.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
@@ -641,7 +622,6 @@ end tell
       const { exec } = await import('child_process');
       const { promisify } = await import('util');
       const execAsync = promisify(exec);
-
       await execAsync(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`);
       res.json({ ok: true });
     } catch (err) {
@@ -649,48 +629,20 @@ end tell
     }
   });
 
-  app.get('/health', async (_req, res) => {
-    try {
-      const cfg = await loadConfig();
-      const packageJson = JSON.parse(
-        await fs.readFile(path.join(__dirname, 'package.json'), 'utf8')
-      );
-      const allSessions = await sessionManager.getAllSessions();
-      res.json({
-        status: 'ok',
-        version: packageJson.version,
-        uptimeSeconds: Math.floor(process.uptime()),
-        sessionCount: allSessions.length,
-      });
-    } catch (err) {
-      errorResponse(res, err);
-    }
-  });
-
   // -------------------------------------------------------------------------
-  // SSE endpoint
+  // SSE endpoint (fired by ingest + meta edits)
   // -------------------------------------------------------------------------
-
   app.get('/api/events', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
-
-    // Send initial connection confirmation
     res.write(': connected\n\n');
 
-    const onChange = () => {
-      res.write(`data: ${JSON.stringify({ type: 'change' })}\n\n`);
-    };
-
+    const onChange = () => res.write(`data: ${JSON.stringify({ type: 'change' })}\n\n`);
     changeEmitter.on('change', onChange);
 
-    // Heartbeat every 30 seconds
-    const heartbeat = setInterval(() => {
-      res.write(': heartbeat\n\n');
-    }, 30_000);
-
+    const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 30_000);
     req.on('close', () => {
       changeEmitter.off('change', onChange);
       clearInterval(heartbeat);
@@ -703,19 +655,15 @@ end tell
 // ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
-
 async function main() {
   const config = await loadConfig();
-  const sessionManager = new SessionManager(config);
+  await migrate(); // ensure schema exists
 
-  await sessionManager.loadPersistedMeta();
-  startWatcher(config, sessionManager);
-
-  const app = await createApp(config, sessionManager);
-  const port = config.port || 9000;
+  const app = await createApp(config);
+  const port = process.env.PORT || config.port || 9000;
 
   app.listen(port, () => {
-    console.log(`MISSION-CONTROL running on http://localhost:${port}`);
+    console.log(`MISSION-CONTROL running on http://0.0.0.0:${port} (reachable on your LAN)`);
   });
 }
 

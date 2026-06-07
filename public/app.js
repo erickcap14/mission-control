@@ -6,7 +6,8 @@
 const { useState, useEffect, useRef, useCallback } = React;
 const h = React.createElement;
 
-const API = 'http://localhost:9000/api';
+// Relative so the dashboard works from any device on the LAN (http://<host-ip>:9000).
+const API = '/api';
 
 // ── Helpers ─────────────────────────────────────────────────
 
@@ -199,7 +200,7 @@ function SessionModal({ session, onClose, onUpdated }) {
       const res = await fetch(`${API}/sessions/${session.id}/summary`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ summary: summaryText })
+        body: JSON.stringify({ summary: summaryText, device: session.device })
       });
       if (res.ok && onUpdated) onUpdated({ ...session, summary: summaryText });
     } catch (err) {
@@ -214,7 +215,7 @@ function SessionModal({ session, onClose, onUpdated }) {
       const res = await fetch(`${API}/sessions/${session.id}/status`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
+        body: JSON.stringify({ status: newStatus, device: session.device })
       });
       if (res.ok && onUpdated) onUpdated({ ...session, status: newStatus });
     } catch (err) {
@@ -803,6 +804,55 @@ function ToolkitPanel({ toolkitData }) {
   );
 }
 
+// ── Login Screen ─────────────────────────────────────────────
+
+function Login({ onSuccess }) {
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setErr('');
+    try {
+      const res = await fetch(`${API}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const body = await res.json().catch(() => ({}));
+        setErr(body.error || 'Incorrect password');
+      }
+    } catch (e2) {
+      setErr('Cannot reach server');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return h('div', { className: 'login-screen' },
+    h('form', { className: 'login-box', onSubmit: submit },
+      h('div', { className: 'login-logo' }, 'MISSION-CONTROL'),
+      h('div', { className: 'login-sub' }, 'enter dashboard password'),
+      h('input', {
+        type: 'password',
+        className: 'login-input',
+        placeholder: 'password',
+        value: pw,
+        autoFocus: true,
+        onChange: e => setPw(e.target.value),
+      }),
+      err ? h('div', { className: 'login-error' }, err) : null,
+      h('button', { type: 'submit', className: 'login-btn', disabled: busy },
+        busy ? 'checking…' : 'enter')
+    )
+  );
+}
+
 // ── Main App ─────────────────────────────────────────────────
 
 function App() {
@@ -824,74 +874,103 @@ function App() {
   const [monthlyStats, setMonthlyStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [liveConnected, setLiveConnected] = useState(false);
+  const [authed, setAuthed] = useState(null); // null = checking, true/false = known
+  const [devices, setDevices] = useState([]);
+  const [selectedDevice, setSelectedDevice] = useState(''); // '' = all devices
   const searchRef = useRef(null);
   const pollRef = useRef(null);
   const sseRef = useRef(null);
+  const deviceRef = useRef('');
+  deviceRef.current = selectedDevice; // stable fetch callbacks read the current value here
 
-  // ── Fetch functions ──
+  // ── Fetch helpers ──
+
+  // Appends ?device= when a specific device is selected. Returns the response,
+  // flipping `authed` to false on a 401 so the login screen takes over.
+  const apiFetch = useCallback(async (path) => {
+    const sep = path.includes('?') ? '&' : '?';
+    const url = API + path + (deviceRef.current ? `${sep}device=${encodeURIComponent(deviceRef.current)}` : '');
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (res.status === 401) {
+      setAuthed(false);
+      return null;
+    }
+    setAuthed(true);
+    return res;
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/stats`);
-      if (res.ok) setStats(await res.json());
+      const res = await apiFetch('/stats');
+      if (res && res.ok) setStats(await res.json());
     } catch (e) { /* silent */ }
-  }, []);
+  }, [apiFetch]);
 
   const fetchProjects = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/projects`);
-      if (res.ok) setProjects(await res.json());
+      const res = await apiFetch('/projects');
+      if (res && res.ok) setProjects(await res.json());
     } catch (e) { /* silent */ }
-  }, []);
+  }, [apiFetch]);
 
   const fetchSessions = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/sessions`);
-      if (res.ok) setSessions(await res.json());
+      const res = await apiFetch('/sessions');
+      if (res && res.ok) setSessions(await res.json());
     } catch (e) { /* silent */ }
-  }, []);
+  }, [apiFetch]);
+
+  const fetchDevices = useCallback(async () => {
+    try {
+      const res = await apiFetch('/devices');
+      if (res && res.ok) setDevices(await res.json());
+    } catch (e) { /* silent */ }
+  }, [apiFetch]);
 
   const fetchCharts = useCallback(async () => {
     try {
       const [dr, mr] = await Promise.all([
-        fetch(`${API}/daily-stats`),
-        fetch(`${API}/monthly-stats`)
+        apiFetch('/daily-stats'),
+        apiFetch('/monthly-stats')
       ]);
-      if (dr.ok) setDailyStats(await dr.json());
-      if (mr.ok) setMonthlyStats(await mr.json());
+      if (dr && dr.ok) setDailyStats(await dr.json());
+      if (mr && mr.ok) setMonthlyStats(await mr.json());
     } catch (e) { /* silent */ }
-  }, []);
+  }, [apiFetch]);
 
   const fetchUsageStats = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/usage-stats`);
-      if (res.ok) setUsageStats(await res.json());
+      const res = await apiFetch('/usage-stats');
+      if (res && res.ok) setUsageStats(await res.json());
     } catch (e) { /* silent */ }
-  }, []);
+  }, [apiFetch]);
 
   const fetchToolkit = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/toolkit`);
-      if (res.ok) setToolkitData(await res.json());
+      const res = await apiFetch('/toolkit');
+      if (res && res.ok) setToolkitData(await res.json());
     } catch (err) {
       console.error('toolkit fetch failed', err);
     }
-  }, []);
+  }, [apiFetch]);
 
   const refreshData = useCallback(async () => {
-    await Promise.all([fetchStats(), fetchSessions(), fetchProjects()]);
-  }, [fetchStats, fetchSessions, fetchProjects]);
+    await Promise.all([fetchStats(), fetchSessions(), fetchProjects(), fetchDevices()]);
+  }, [fetchStats, fetchSessions, fetchProjects, fetchDevices]);
 
-  // ── Mount: initial load + SSE + polling ──
+  const loadAll = useCallback(async () => {
+    setLoading(true);
+    await Promise.all([fetchStats(), fetchProjects(), fetchSessions(), fetchCharts(), fetchDevices()]);
+    setLoading(false);
+  }, [fetchStats, fetchProjects, fetchSessions, fetchCharts, fetchDevices]);
 
+  // ── Mount: initial load (also establishes auth state) ──
+  useEffect(() => { loadAll(); }, []);  // eslint-disable-line
+
+  // ── SSE + polling — only once authenticated ──
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await Promise.all([fetchStats(), fetchProjects(), fetchSessions(), fetchCharts()]);
-      setLoading(false);
-    })();
+    if (authed !== true) return;
 
-    // SSE
     function connectSSE() {
       try {
         const es = new EventSource(`${API}/events`);
@@ -902,26 +981,29 @@ function App() {
           es.close();
           setTimeout(connectSSE, 5000);
         };
-        es.addEventListener('change', () => {
-          refreshData();
-        });
-        es.onmessage = () => {
-          refreshData();
-        };
+        es.addEventListener('change', () => { refreshData(); });
+        es.onmessage = () => { refreshData(); };
       } catch (e) {
         setLiveConnected(false);
       }
     }
     connectSSE();
-
-    // Fallback poll every 5s
     pollRef.current = setInterval(refreshData, 5000);
 
     return () => {
       if (sseRef.current) sseRef.current.close();
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, []);  // eslint-disable-line
+  }, [authed, refreshData]);
+
+  // ── Reload when the device filter changes ──
+  useEffect(() => {
+    if (authed !== true) return;
+    refreshData();
+    fetchCharts();
+    if (view === 'usage') fetchUsageStats();
+    if (view === 'toolkit') fetchToolkit();
+  }, [selectedDevice]);  // eslint-disable-line
 
   // ── Keyboard shortcuts ──
 
@@ -1077,6 +1159,11 @@ function App() {
     return sum + (t.input || 0) + (t.output || 0) + (t.cacheRead || 0) + (t.cacheWrite || 0);
   }, 0);
 
+  // Not authenticated — show the login screen instead of the dashboard.
+  if (authed === false) {
+    return h(Login, { onSuccess: () => { setAuthed(true); loadAll(); } });
+  }
+
   return h('div', { className: 'app' },
 
     // TOP BAR
@@ -1119,10 +1206,32 @@ function App() {
         h('div', { className: 'stat-value' }, fmtCount(topBarTokens))
       ),
       h('div', { className: 'top-bar-spacer' }),
+      h('div', { className: 'device-filter' },
+        h('span', { className: 'device-filter-label' }, 'Device'),
+        h('select', {
+          className: 'device-select',
+          value: selectedDevice,
+          onChange: e => setSelectedDevice(e.target.value)
+        },
+          h('option', { value: '' }, `All devices${devices.length ? ' (' + devices.length + ')' : ''}`),
+          ...devices.map(d =>
+            h('option', { key: d.id, value: d.id },
+              `${d.name}${d.sessionCount != null ? ' · ' + d.sessionCount : ''}`)
+          )
+        )
+      ),
       h('div', { className: 'live-indicator' },
         h('div', { className: 'live-dot' + (liveConnected ? ' active' : '') }),
         liveConnected ? 'live' : 'polling'
-      )
+      ),
+      h('button', {
+        className: 'logout-btn',
+        title: 'Log out',
+        onClick: async () => {
+          await fetch(`${API}/logout`, { method: 'POST', credentials: 'same-origin' });
+          setAuthed(false);
+        }
+      }, 'logout')
     ),
 
     // MAIN
@@ -1214,13 +1323,14 @@ function App() {
                     className: sortKey === 'duration' ? 'sort-active' : '',
                     onClick: () => handleSort('duration')
                   }, 'Duration', h('span', { className: 'sort-arrow' }, sortArrow('duration'))),
-                  h('th', null, 'Status')
+                  h('th', null, 'Status'),
+                  h('th', null, 'Device')
                 )
               ),
               h('tbody', null,
                 filteredSorted.length === 0
                   ? h('tr', null,
-                      h('td', { colSpan: 7, className: 'no-sessions' },
+                      h('td', { colSpan: 8, className: 'no-sessions' },
                         searchQuery ? 'no sessions match your search' : 'no sessions yet'
                       )
                     )
@@ -1239,7 +1349,9 @@ function App() {
                         h('td', null, fmtTokens(s.tokens)),
                         h('td', { style: { color: '#ffaa00' } }, fmtCost(s.cost)),
                         h('td', null, fmtDuration(s.duration)),
-                        h('td', null, h(StatusDot, { status: s.status }))
+                        h('td', null, h(StatusDot, { status: s.status })),
+                        h('td', { style: { color: '#888', fontSize: '11px' } },
+                          (devices.find(d => d.id === s.device) || {}).name || s.device || '—')
                       )
                     )
               )

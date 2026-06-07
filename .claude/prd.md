@@ -7,14 +7,15 @@ Purpose: This document defines what MISSION-CONTROL is, who it's for, and what i
 ## 1. The Big Picture
 
 - **Project Name:** MISSION-CONTROL
-- **One-Sentence Summary:** A local analytics dashboard that reads Claude Code session files and gives developers a real-time view of their usage, costs, and productivity metrics.
-- **Who is this for:** Developers using Claude Code daily who want visibility into their session history, token spend, and time-saving estimates — without leaving their local machine.
+- **One-Sentence Summary:** A LAN-shared analytics dashboard that aggregates Claude Code usage from every device on your local network into one persistent backend, giving a real-time, per-device view of usage, costs, and productivity metrics.
+- **Who is this for:** Developers using Claude Code across more than one machine (e.g., a laptop and a desktop) on the same network who want a single, persistent dashboard of their session history, token spend, and time-saving estimates — without sending anything to the public internet.
 - **What this app will NOT do:**
   - Modify or control Claude Code's behavior or settings
-  - Send any data to the cloud or external services
+  - Expose data to the public internet or any third-party cloud service (it is LAN-only)
   - Replace Claude Code's built-in chat UI
-  - Require authentication or user accounts
-  - Support multiple users or shared team views
+  - Support arbitrary multi-tenant team accounts (it is single-owner; the dashboard is gated by one shared password)
+
+> **Architecture change (v0.2):** MISSION-CONTROL was originally a strictly single-machine, in-memory, file-reading app. It is now a **LAN-shared, persistent, multi-device** system: one host device runs the backend + PostgreSQL; every device runs a lightweight collector that pushes its local session data to the host; any device on the LAN can view the aggregated data, filterable by device, after logging in. This intentionally supersedes the earlier "local machine only / no auth / single user" constraints.
 
 ---
 
@@ -50,9 +51,22 @@ As a developer, I want an estimate of how much time I saved using Claude so I ca
 
 **Story 5 — Real-Time Updates**
 As a developer, I want the dashboard to reflect active sessions without manual refresh so I can see live cost accumulation.
-- File watcher (chokidar) monitors `~/.claude/projects/**/*.jsonl`
-- Cache invalidated on file add/change/delete
-- Frontend polls every 5 seconds for fresh data
+- The per-device collector watches `~/.claude/projects/**/*.jsonl` (chokidar) and pushes changed sessions to the backend
+- The backend emits a Server-Sent Event on every ingest; all connected dashboards refresh
+- Frontend also polls every 5 seconds as a fallback
+
+**Story 11 — Multi-Device Aggregation & Persistence (v0.2)**
+As a developer working from multiple machines, I want all my devices' usage stored centrally and persistently so I see one combined picture that survives restarts.
+- Each device runs a collector (`collector.js`) that reads its local `~/.claude` files and pushes them to the host backend, tagged with a device id
+- Backend persists everything in PostgreSQL (`sessions`, `session_meta`, `devices`) — data survives server restarts
+- Dashboard has a **device filter** (All / per-device); every read endpoint accepts `?device=<id>`
+- `GET /api/devices` lists registered devices with session counts
+
+**Story 12 — Access Control (v0.2)**
+As the owner, I want the backend secured since it listens on the LAN, so others on the network can't read or write my data.
+- Per-device API keys (hashed at rest) authenticate collector pushes to `/api/ingest/*`
+- A shared dashboard password (via `POST /api/login`) gates the dashboard and all read APIs with a signed, HttpOnly cookie
+- `scripts/register-device.js` registers a device and prints its key once
 
 **Story 6 — Daily & Monthly Stats**
 As a developer, I want to see cost and token breakdowns over time so I can spot trends.
@@ -63,7 +77,7 @@ As a developer, I want to see cost and token breakdowns over time so I can spot 
 As a developer, I want to mark sessions as WIP or complete and edit their summaries so I can organize my work history.
 - `PUT /api/sessions/:id/status` — set status to `wip`, `complete`, or null
 - `PUT /api/sessions/:id/summary` — edit the human-readable summary
-- Note: persistence to disk is not yet implemented (in-memory only)
+- Edits are persisted in the `session_meta` table and survive re-ingestion of the underlying session
 
 **Story 8 — Ghostty Session Restore (macOS)**
 As a macOS developer using Ghostty terminal, I want to resume a past session with one click so I can continue where I left off.
@@ -112,12 +126,13 @@ As a developer, I want sessions to have readable summaries even when I haven't w
 ## 4. Technical Architecture
 
 - **Runtime:** Node.js (ESM modules, `"type": "module"`)
-- **Server:** Express 4.x, port 9000 by default
-- **Frontend:** React 18 (CDN UMD build), no build step, vanilla CSS in `public/index.html`
-- **Data source:** `~/.claude/projects/<encoded-path>/*.jsonl` — Claude Code's native session storage
-- **File watching:** chokidar with polling for cross-platform compatibility
-- **Caching:** mtime-based in-memory cache (`Map`), per session file and per project
-- **Config file:** `config.json` at project root
+- **Backend:** Express 4.x on the host device, bound to `0.0.0.0:9000` (LAN-reachable). `PORT` env overrides the config port.
+- **Database:** PostgreSQL (run locally on the host via Docker Compose). Tables: `devices`, `sessions` (full session object in `JSONB` + promoted columns), `session_meta`.
+- **Collector:** `collector.js` runs on each device — reuses `sessionParser`/`sessionManager` + chokidar to read local `~/.claude` files and pushes deltas to `POST /api/ingest/sessions`.
+- **Frontend:** React 18 (CDN UMD build), no build step, vanilla CSS in `public/index.html`. API base is relative so it works from any LAN device.
+- **Auth:** device API keys (scrypt-hashed) for ingest; shared dashboard password + HMAC-signed HttpOnly cookie for reads. Built on Node's `crypto` (no extra auth dependency).
+- **Source of truth:** PostgreSQL. Per-device `~/.claude/*.jsonl` files remain the upstream raw data that collectors read.
+- **Config:** shared policy (pricing, plan limits) in `config.json`; secrets in `.env` (`DATABASE_URL`, `DASHBOARD_PASSWORD`); per-device settings in `collector.config.json` (git-ignored).
 
 **Directory Layout (baseline):**
 ```
@@ -165,10 +180,11 @@ High-priority gaps:
 
 ---
 
-## 6. Out of Scope (v0.1)
+## 6. Out of Scope (v0.2)
 
-- Cloud sync or remote access
-- Multi-user / team sharing
+- Public-internet / cross-network access (LAN-only by design; expose via VPN/Tailscale at your own risk)
+- Multi-tenant team accounts with per-user data isolation (single-owner, one shared dashboard password)
+- Per-device toolkit scanning — `GET /api/toolkit` reflects the host device only
+- Cross-device session restore — `POST /api/restore/:id` works only for sessions owned by the host
 - CI/CD integration
-- Billing alerts / budget limits (future)
 - Support for non-Claude AI tools
