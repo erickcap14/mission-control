@@ -639,9 +639,27 @@ function UsageDashboard({ usageStats }) {
 function ToolkitPanel({ toolkitData }) {
   if (!toolkitData) return h('div', { className: 'loading' }, 'Loading...');
 
-  const { skills, mcpServers, plugins, globalSettings } = toolkitData;
+  const { skills, mcpServers, plugins, globalSettings, devices } = toolkitData;
+
+  // Determine whether globalSettings is per-device (aggregated view returns an
+  // object keyed by device name) or a plain settings object (single-device view).
+  const isAggregated = devices && devices.length > 0;
+  const settingsIsPerDevice = isAggregated && globalSettings !== null &&
+    typeof globalSettings === 'object' && !Array.isArray(globalSettings) &&
+    Object.keys(globalSettings).length > 0 &&
+    typeof Object.values(globalSettings)[0] === 'object';
 
   return h('div', { className: 'usage-dashboard' },
+
+    // Contributing devices caption (aggregated view only).
+    isAggregated
+      ? h('div', { style: { color: '#555', fontSize: '11px', marginBottom: '12px', paddingLeft: '2px' } },
+          'aggregated from: ',
+          devices.map((d, i) =>
+            h('span', { key: i, style: { color: '#00b4d8', marginRight: '6px' } }, d)
+          )
+        )
+      : null,
 
     h('div', { className: 'usage-card' },
       h('div', { className: 'modal-section-label' }, 'skills, commands & hooks'),
@@ -785,21 +803,50 @@ function ToolkitPanel({ toolkitData }) {
 
     h('div', { className: 'usage-card' },
       h('div', { className: 'modal-section-label' }, 'global settings'),
-      h('div', { style: { color: '#555', fontSize: '10px', marginBottom: '8px' } }, '~/.claude/settings.json'),
-      h('pre', {
-        style: {
-          background: '#0a0e17',
-          padding: '12px',
-          fontSize: '11px',
-          overflowX: 'auto',
-          color: '#888',
-          maxHeight: '400px',
-          overflowY: 'auto',
-          margin: 0,
-          fontFamily: "'IBM Plex Mono', monospace",
-          lineHeight: '1.5'
-        }
-      }, JSON.stringify(globalSettings, null, 2))
+      settingsIsPerDevice
+        // Aggregated: render each device's settings under its name.
+        ? Object.entries(globalSettings).map(([devName, settings]) =>
+            h('div', { key: devName, style: { marginBottom: '16px' } },
+              h('div', { style: { color: '#00b4d8', fontSize: '10px', marginBottom: '4px' } },
+                devName + ' — ~/.claude/settings.json'
+              ),
+              h('pre', {
+                style: {
+                  background: '#0a0e17',
+                  padding: '12px',
+                  fontSize: '11px',
+                  overflowX: 'auto',
+                  color: '#888',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  margin: 0,
+                  fontFamily: "'IBM Plex Mono', monospace",
+                  lineHeight: '1.5'
+                }
+              }, JSON.stringify(settings, null, 2))
+            )
+          )
+        // Single-device (or fallback host scan): render flat.
+        : [
+            h('div', { key: 'label', style: { color: '#555', fontSize: '10px', marginBottom: '8px' } },
+              '~/.claude/settings.json'
+            ),
+            h('pre', {
+              key: 'pre',
+              style: {
+                background: '#0a0e17',
+                padding: '12px',
+                fontSize: '11px',
+                overflowX: 'auto',
+                color: '#888',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                margin: 0,
+                fontFamily: "'IBM Plex Mono', monospace",
+                lineHeight: '1.5'
+              }
+            }, JSON.stringify(globalSettings, null, 2))
+          ]
     )
   );
 }
@@ -947,6 +994,8 @@ function App() {
 
   const fetchToolkit = useCallback(async () => {
     try {
+      // apiFetch already appends ?device=<id> when a device is selected,
+      // so single-device and aggregated views both work with the same call.
       const res = await apiFetch('/toolkit');
       if (res && res.ok) setToolkitData(await res.json());
     } catch (err) {

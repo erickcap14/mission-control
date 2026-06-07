@@ -37,3 +37,10 @@ CREATE TABLE IF NOT EXISTS session_meta (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (device_id, session_id)
 );
+
+-- Per-device toolkit snapshot pushed by each collector on startup and every 5 min.
+CREATE TABLE IF NOT EXISTS device_toolkit (
+  device_id   TEXT PRIMARY KEY REFERENCES devices(id) ON DELETE CASCADE,
+  data        JSONB NOT NULL,             -- full scanToolkit result
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

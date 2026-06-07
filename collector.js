@@ -15,6 +15,7 @@ import os from 'os';
 import { fileURLToPath } from 'url';
 import chokidar from 'chokidar';
 import SessionManager from './lib/sessionManager.js';
+import { scanToolkit } from './lib/toolkitScanner.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -55,6 +56,7 @@ async function main() {
 
   const sessionManager = new SessionManager(config);
   const ingestUrl = backendUrl.replace(/\/$/, '') + '/api/ingest/sessions';
+  const toolkitUrl = backendUrl.replace(/\/$/, '') + '/api/ingest/toolkit';
   const sent = new Map(); // sessionId -> fingerprint
 
   async function pushChanged(reason) {
@@ -91,6 +93,31 @@ async function main() {
     }
   }
 
+  /** Scans and pushes this device's local toolkit snapshot to the backend. */
+  async function pushToolkit(reason) {
+    try {
+      const toolkit = await scanToolkit(config);
+      const res = await fetch(toolkitUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Device-Id': deviceId,
+          Authorization: `Bearer ${deviceKey}`,
+        },
+        body: JSON.stringify({ deviceName, toolkit }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => '');
+        console.error(`collector: toolkit ingest failed (${res.status}): ${body}`);
+        return;
+      }
+      console.log(`collector: pushed toolkit [${reason}]`);
+    } catch (err) {
+      // Never let a toolkit failure kill the collector.
+      console.error('collector: toolkit push error:', err.message);
+    }
+  }
+
   // Debounced watcher on this device's local Claude session files.
   const claudeDir = expandHome(config.claudeDir);
   const watchGlob = path.join(claudeDir, 'projects', '**', '*.jsonl');
@@ -109,6 +136,10 @@ async function main() {
 
   console.log(`MISSION-CONTROL collector — device "${deviceId}" → ${backendUrl}`);
   await pushChanged('startup'); // backfill existing history
+
+  // Push toolkit on startup then every 5 minutes (toolkit files change rarely).
+  await pushToolkit('startup');
+  setInterval(() => pushToolkit('interval'), 5 * 60 * 1000);
 }
 
 main().catch(err => {

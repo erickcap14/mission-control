@@ -24,6 +24,8 @@ import {
   getDevices,
   setMeta,
   findSessionDevice,
+  upsertToolkit,
+  getToolkits,
 } from './lib/db.js';
 import { calculateTimeSaved } from './lib/costCalculator.js';
 import { deviceAuth, dashboardAuth, loginHandler, logoutHandler } from './lib/auth.js';
@@ -165,6 +167,17 @@ async function createApp(config) {
       await touchDevice(req.deviceId);
       changeEmitter.emit('change');
       res.json({ ok: true, ingested: sessions.length });
+    } catch (err) {
+      errorResponse(res, err);
+    }
+  });
+
+  app.post('/api/ingest/toolkit', deviceAuth, async (req, res) => {
+    try {
+      const { toolkit } = req.body || {};
+      await upsertToolkit(req.deviceId, toolkit);
+      await touchDevice(req.deviceId);
+      res.json({ ok: true });
     } catch (err) {
       errorResponse(res, err);
     }
@@ -562,12 +575,86 @@ async function createApp(config) {
   });
 
   // -------------------------------------------------------------------------
-  // Toolkit (host-local: scans the backend host's filesystem)
+  // Toolkit — aggregates per-device scanner snapshots from the DB.
+  // Falls back to a live host scan when no collector has pushed yet (fresh
+  // install back-compat).
   // -------------------------------------------------------------------------
-  app.get('/api/toolkit', async (_req, res) => {
+  app.get('/api/toolkit', async (req, res) => {
     try {
-      const { scanToolkit } = await import('./lib/toolkitScanner.js');
-      res.json(await scanToolkit(config));
+      const rows = await getToolkits();
+
+      // Back-compat fallback: no device has pushed a toolkit yet.
+      if (!rows.length) {
+        const { scanToolkit } = await import('./lib/toolkitScanner.js');
+        return res.json(await scanToolkit(config));
+      }
+
+      const deviceParam = req.query.device;
+      if (deviceParam) {
+        // Single-device view: return that device's stored snapshot directly.
+        const row = rows.find(r => r.device === deviceParam);
+        if (!row) {
+          return res.json({ skills: [], mcpServers: [], plugins: [], globalSettings: {} });
+        }
+        return res.json(row.data);
+      }
+
+      // Aggregate across all devices.
+      // Dedupe keys: skills/hooks by name, mcpServers by name, plugins by name.
+      // globalSettings differs per machine — return a per-device map.
+      const skillMap = new Map();    // name -> item (last one wins; devices annotated)
+      const mcpMap = new Map();      // name -> item
+      const pluginMap = new Map();   // name -> item
+      const settingsMap = {};        // deviceName -> globalSettings object
+
+      for (const row of rows) {
+        const { skills = [], mcpServers = [], plugins = [], globalSettings = {} } = row.data || {};
+
+        for (const sk of skills) {
+          if (!skillMap.has(sk.name)) {
+            skillMap.set(sk.name, { ...sk, devices: [row.deviceName] });
+          } else {
+            const existing = skillMap.get(sk.name);
+            if (!existing.devices.includes(row.deviceName)) {
+              existing.devices.push(row.deviceName);
+            }
+          }
+        }
+
+        for (const srv of mcpServers) {
+          if (!mcpMap.has(srv.name)) {
+            mcpMap.set(srv.name, { ...srv, devices: [row.deviceName] });
+          } else {
+            const existing = mcpMap.get(srv.name);
+            if (!existing.devices.includes(row.deviceName)) {
+              existing.devices.push(row.deviceName);
+            }
+          }
+        }
+
+        for (const pl of plugins) {
+          if (!pluginMap.has(pl.name)) {
+            pluginMap.set(pl.name, { ...pl, devices: [row.deviceName] });
+          } else {
+            const existing = pluginMap.get(pl.name);
+            if (!existing.devices.includes(row.deviceName)) {
+              existing.devices.push(row.deviceName);
+            }
+          }
+        }
+
+        settingsMap[row.deviceName] = globalSettings;
+      }
+
+      res.json({
+        skills: Array.from(skillMap.values()),
+        mcpServers: Array.from(mcpMap.values()),
+        plugins: Array.from(pluginMap.values()),
+        // Per-device settings map; also keep a top-level globalSettings for
+        // backward-compatible code paths that expect a plain object.
+        globalSettings: settingsMap,
+        devices: rows.map(r => r.deviceName),
+      });
     } catch (err) {
       errorResponse(res, err);
     }
