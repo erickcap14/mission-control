@@ -24,11 +24,14 @@ Would you like me to set it up now? (This is a one-time setup that works across 
 ---
 
 ### 1. Environment Setup
-- Check if your dev server is running (customize the port for your project)
-- If not running, start it in background (e.g., `npm run dev`, `python manage.py runserver`, etc.)
-- Confirm the server starts successfully
 
-> **Note:** Customize the dev server command and port for your specific project stack.
+MISSION-CONTROL is a **Node/Express + PostgreSQL** stack. The backend will **not** start unless Postgres is up first, so check the layers in order. Do **not** start anything destructively — only offer to start what's down.
+
+1. **Backend already running?** — `curl -s http://localhost:9000/health` (or the configured `port`). If it returns JSON, the stack is up; note the `version`/`sessionCount` and skip the rest of this section.
+2. **PostgreSQL up?** — `docker inspect --format '{{.State.Health.Status}}' mission-control-db` should print `healthy`. If the container is missing or unhealthy, offer to run `docker compose up -d` and wait for the healthcheck, then `npm run db:migrate` (idempotent).
+3. **Start the backend** only if the user wants to work against a live server: prefer `./start.sh` (brings up Postgres → migrate → backend → host collector, opens the dashboard) — or `npm start` for backend-only. Run it in the background and confirm `/health` responds.
+
+> **Note:** Many sessions are code-only and don't need a live server — don't force a startup. If Docker isn't running, surface that rather than failing silently; the backend needs Postgres.
 
 ### 2. Git Status Check
 - Run `git status` to show current branch and any uncommitted changes
@@ -58,8 +61,9 @@ Read and internalize the full project context:
 - Note any issues with status "in_progress" that may need continuation
 
 ### 4. Environment Check
-- Verify environment files exist (e.g., `.env.local`, `.env`)
-- Note if any environment variables appear to be missing based on example files
+- Verify `.env` exists (compare against `.env.example`). Required: `DATABASE_URL`, `DASHBOARD_PASSWORD`. Optional: `SESSION_SECRET`, and `TLS_CERT_FILE`/`TLS_KEY_FILE` (only if running HTTPS).
+- For multi-device work, note whether `collector.config.json` exists (per-device, git-ignored); without it the host collector is skipped.
+- Flag any variable present in `.env.example` but missing from `.env`.
 
 ### 5. Present Options
 After gathering context, ask the user:
