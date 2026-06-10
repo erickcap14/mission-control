@@ -57,6 +57,7 @@ function fmtCount(n) {
 function modelClass(model) {
   if (!model) return 'unknown';
   const m = model.toLowerCase();
+  if (m.includes('fable')) return 'fable';
   if (m.includes('opus')) return 'opus';
   if (m.includes('sonnet')) return 'sonnet';
   if (m.includes('haiku')) return 'haiku';
@@ -66,6 +67,7 @@ function modelClass(model) {
 function modelLabel(model) {
   if (!model) return 'unknown';
   const m = model.toLowerCase();
+  if (m.includes('fable')) return 'fable';
   if (m.includes('opus')) return 'opus';
   if (m.includes('haiku')) return 'haiku';
   // Extract short model id like "sonnet-4-5"
