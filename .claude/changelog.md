@@ -44,6 +44,16 @@ This ensures transparency and traceability for all AI-executed workflows.
 
 ---
 
+## [0.2.2] - 2026-06-12
+
+### Added
+- **Model Breakdown — $/MTok column:** Effective blended cost per million tokens (all token types) per model (`692896e`)
+- **Model Breakdown — List Price column:** Published input/output rates from `config.json` shown as `$X in / $Y out` per model; server now enriches `byModel` entries with `listPrice` via `getPricing` (`0892775`, `0451be2`)
+- **Model Breakdown — per-type token columns:** Input, Output, and Cache Read token counts broken out per model row; server now tracks these separately in `byModel` (`5abc49e`)
+- **Model Breakdown — Avg/Session column:** Average input+output tokens per session per model, making cross-model intensity comparable independent of session count (`1ea8ae2`)
+
+---
+
 ## [0.2.1] - 2026-06-11
 
 ### Fixed
