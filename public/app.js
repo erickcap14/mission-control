@@ -650,6 +650,7 @@ function UsageDashboard({ usageStats }) {
             h('th', null, 'Input'),
             h('th', null, 'Output'),
             h('th', null, 'Cache Read'),
+            h('th', null, 'Avg/Session'),
             h('th', null, 'Cost'),
             h('th', null, '$/MTok'),
             h('th', null, 'List Price'),
@@ -664,6 +665,7 @@ function UsageDashboard({ usageStats }) {
               h('td', null, fmtCount(r.input)),
               h('td', null, fmtCount(r.output)),
               h('td', { style: { color: '#888' } }, fmtCount(r.cacheRead)),
+              h('td', null, fmtCount(r.sessions > 0 ? Math.round((r.input + r.output) / r.sessions) : 0)),
               h('td', { style: { color: '#ffaa00' } }, fmtCost(r.cost)),
               h('td', { style: { color: '#aaa' } },
                 r.tokens > 0 ? '$' + (r.cost / r.tokens * 1_000_000).toFixed(2) + '/M' : '—'
