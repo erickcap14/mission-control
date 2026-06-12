@@ -1,3 +1,26 @@
+# Mission Control
+
+A self-hosted dashboard for monitoring your Claude Code usage — sessions, costs, token breakdowns, and toolkit inventory — across all your projects.
+
+## Screenshots
+
+### Sessions
+Track every Claude Code session with cost, token count, model, duration, and a one-line summary. Filter by project, search, sort, and drill into full session details.
+
+![Sessions view](docs/screenshots/sessions.png)
+
+### Usage
+Monthly cost, token limits, 5-hour and weekly windows, and a full model breakdown showing input/output/cache tokens, effective $/MTok, published list prices, and average tokens per session.
+
+![Usage view](docs/screenshots/usage.png)
+
+### Toolkit
+Inventory of all skills, slash commands, hooks, MCP servers, and global settings registered across your devices.
+
+![Toolkit view](docs/screenshots/toolkit.png)
+
+---
+
 # Claude Code Starter Kit
 
 ## For Humans: What This Is
