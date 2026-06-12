@@ -650,6 +650,7 @@ function UsageDashboard({ usageStats }) {
             h('th', null, 'Tokens'),
             h('th', null, 'Cost'),
             h('th', null, '$/MTok'),
+            h('th', null, 'List Price'),
             h('th', null, '% of Total')
           )
         ),
@@ -662,6 +663,11 @@ function UsageDashboard({ usageStats }) {
               h('td', { style: { color: '#ffaa00' } }, fmtCost(r.cost)),
               h('td', { style: { color: '#aaa' } },
                 r.tokens > 0 ? '$' + (r.cost / r.tokens * 1_000_000).toFixed(2) + '/M' : '—'
+              ),
+              h('td', { style: { color: '#666', fontSize: '11px' } },
+                r.listPrice
+                  ? '$' + r.listPrice.input + '/$' + r.listPrice.output
+                  : '—'
               ),
               h('td', null,
                 h('div', { className: 'usage-pct-bar' },

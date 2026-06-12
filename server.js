@@ -27,7 +27,7 @@ import {
   upsertToolkit,
   getToolkits,
 } from './lib/db.js';
-import { calculateTimeSaved } from './lib/costCalculator.js';
+import { calculateTimeSaved, getPricing, normalizeModel } from './lib/costCalculator.js';
 import { deviceAuth, dashboardAuth, loginHandler, logoutHandler } from './lib/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -435,6 +435,11 @@ async function createApp(config) {
           }
         }
         tokens.total = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+
+        const pricingKeys = Object.keys(cfg.pricing || {});
+        for (const [model, d] of Object.entries(byModel)) {
+          d.listPrice = getPricing(normalizeModel(model, pricingKeys), cfg);
+        }
 
         const dailyBreakdown = Object.entries(dailyMap)
           .map(([date, d]) => ({ date, ...d }))
