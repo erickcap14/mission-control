@@ -44,6 +44,19 @@ This ensures transparency and traceability for all AI-executed workflows.
 
 ---
 
+## [0.2.1] - 2026-06-11
+
+### Fixed
+- `modelLabel()` in `public/app.js` was short-circuiting fable before the regex path, showing plain `fable` instead of `fable-5` (consistent with `sonnet-4-6`)
+- `normalizeModel()` in `lib/costCalculator.js` omitted `'fable'` from alias and family-match loops — fable sessions silently fell back to sonnet pricing
+- Server and collector were running stale processes (5-day-old code) that predated the `claude-fable-5` config entry; restarted both to re-ingest 7 fable sessions with correct model attribution
+- Discovered `DASHBOARD_PASSWORD` is still the default `change-me` — follow-up issue created
+
+### Commits
+`17c340b` — fix: show fable version in model badge and fix cost normalization
+
+---
+
 ## [0.1.1] - 2026-06-05
 
 ### Added
