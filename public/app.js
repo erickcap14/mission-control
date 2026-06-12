@@ -649,6 +649,7 @@ function UsageDashboard({ usageStats }) {
             h('th', null, 'Sessions'),
             h('th', null, 'Tokens'),
             h('th', null, 'Cost'),
+            h('th', null, '$/MTok'),
             h('th', null, '% of Total')
           )
         ),
@@ -659,6 +660,9 @@ function UsageDashboard({ usageStats }) {
               h('td', null, r.sessions),
               h('td', null, fmtCount(r.tokens)),
               h('td', { style: { color: '#ffaa00' } }, fmtCost(r.cost)),
+              h('td', { style: { color: '#aaa' } },
+                r.tokens > 0 ? '$' + (r.cost / r.tokens * 1_000_000).toFixed(2) + '/M' : '—'
+              ),
               h('td', null,
                 h('div', { className: 'usage-pct-bar' },
                   h('div', {
