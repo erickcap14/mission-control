@@ -666,7 +666,7 @@ function UsageDashboard({ usageStats }) {
               ),
               h('td', { style: { color: '#666', fontSize: '11px' } },
                 r.listPrice
-                  ? '$' + r.listPrice.input + '/$' + r.listPrice.output
+                  ? '$' + r.listPrice.input + ' in / $' + r.listPrice.output + ' out'
                   : '—'
               ),
               h('td', null,
