@@ -421,8 +421,12 @@ async function createApp(config) {
           cost += s.cost || 0;
 
           const model = s.model || 'unknown';
-          if (!byModel[model]) byModel[model] = { tokens: 0, cost: 0, sessions: 0 };
+          if (!byModel[model]) byModel[model] = { tokens: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, sessions: 0 };
           byModel[model].tokens += sessionTokens;
+          byModel[model].input += ti;
+          byModel[model].output += to;
+          byModel[model].cacheRead += tr;
+          byModel[model].cacheWrite += tw;
           byModel[model].cost += s.cost || 0;
           byModel[model].sessions++;
 
