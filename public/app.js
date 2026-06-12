@@ -67,10 +67,9 @@ function modelClass(model) {
 function modelLabel(model) {
   if (!model) return 'unknown';
   const m = model.toLowerCase();
-  if (m.includes('fable')) return 'fable';
   if (m.includes('opus')) return 'opus';
   if (m.includes('haiku')) return 'haiku';
-  // Extract short model id like "sonnet-4-5"
+  // Extract short model id like "sonnet-4-6" or "fable-5"
   const match = model.match(/claude-(.+)/i);
   if (match) {
     const parts = match[1].split('-');
