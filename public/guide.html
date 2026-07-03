@@ -160,7 +160,8 @@
       </div>
       <button class="copy-btn" data-copy-target="dash-url">Copy</button>
     </div>
-    <p class="small muted" id="url-hint">Log in with the shared <code class="inline">DASHBOARD_PASSWORD</code> set on the host.</p>
+    <p class="small muted" id="url-hint">Log in with the shared <code class="inline">DASHBOARD_PASSWORD</code> set on the host.
+      Failed logins are rate-limited: 10 wrong attempts from a device lock it out for 15 minutes.</p>
 
     <!-- ───────────────────────── HOST ───────────────────────── -->
     <h2><span class="num">A</span>On the host device (runs the backend)</h2>
@@ -188,7 +189,7 @@ npm run db:migrate</code><button class="copy-btn" data-copy="docker compose up -
       <li>
         <div class="lead">Start everything (Postgres → migrate → backend → host collector)</div>
         <pre><code>./start.sh</code><button class="copy-btn" data-copy="./start.sh">Copy</button></pre>
-        <p class="small muted">Or use the <code class="inline">missioncontrol</code> shell alias if you set one up. The backend listens on <code class="inline">0.0.0.0:9000</code> (reachable across your LAN).</p>
+        <p class="small muted">Or use the <code class="inline">missioncontrol</code> shell alias if you set one up. The backend listens on <code class="inline">0.0.0.0:9000</code> (reachable across your LAN) and prints every URL it is reachable at on startup. PostgreSQL stays bound to <code class="inline">127.0.0.1</code> — only the backend can reach it, never the network.</p>
       </li>
     </ol>
 
@@ -277,6 +278,7 @@ TLS_KEY_FILE=./certs/key.pem</code><button class="copy-btn" data-copy="TLS_CERT_
     <footer>
       MISSION-CONTROL · LAN-only, single-owner · This guide is served by the backend at
       <code class="inline">/guide.html</code> and is reachable without logging in.
+      A markdown version lives in the repo at <code class="inline">docs/home-network.md</code>.
     </footer>
   </div>
 

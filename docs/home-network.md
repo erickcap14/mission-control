@@ -4,6 +4,12 @@ How to run MISSION-CONTROL so every device on your home network pushes its
 Claude Code session data to one dashboard, and any browser on the network can
 view it.
 
+> **Tip:** once the host is running, this guide is also served by the backend
+> itself at `http://<host>:9000/guide.html` — an interactive version with
+> copy-to-clipboard commands that fills in your host's real URL automatically,
+> reachable from any device without logging in. It's linked from the login
+> screen and the dashboard top bar.
+
 ## Architecture
 
 ```

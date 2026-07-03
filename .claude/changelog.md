@@ -44,6 +44,17 @@ This ensures transparency and traceability for all AI-executed workflows.
 
 ---
 
+## [0.2.4] - 2026-07-03
+
+### Added
+- **Setup guide discoverability** — `/guide.html` existed but nothing linked to it. The login screen now shows a "first time? setup guide →" link and the dashboard top bar has a `guide` link (opens in a new tab) (Closes: `mission_control-86i`)
+
+### Changed
+- `guide.html` updated for v0.2.3 behavior: notes the login rate limit (10 failures → 15-min lockout), loopback-only PostgreSQL, and the startup LAN URL printout; footer cross-references `docs/home-network.md`
+- `docs/home-network.md` and README now point to the interactive `/guide.html` served by the backend
+
+---
+
 ## [0.2.3] - 2026-07-03
 
 ### Security

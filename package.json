@@ -1,6 +1,6 @@
 {
   "name": "mission-control",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "type": "module",
   "description": "Local analytics dashboard for Claude Code sessions",
   "main": "server.js",

@@ -958,7 +958,9 @@ function Login({ onSuccess }) {
       }),
       err ? h('div', { className: 'login-error' }, err) : null,
       h('button', { type: 'submit', className: 'login-btn', disabled: busy },
-        busy ? 'checking…' : 'enter')
+        busy ? 'checking…' : 'enter'),
+      h('a', { className: 'login-guide-link', href: '/guide.html' },
+        'first time? setup guide →')
     )
   );
 }
@@ -1336,6 +1338,13 @@ function App() {
         h('div', { className: 'live-dot' + (liveConnected ? ' active' : '') }),
         liveConnected ? 'live' : 'polling'
       ),
+      h('a', {
+        className: 'logout-btn guide-link',
+        title: 'LAN setup guide',
+        href: '/guide.html',
+        target: '_blank',
+        rel: 'noopener'
+      }, 'guide'),
       h('button', {
         className: 'logout-btn',
         title: 'Log out',
