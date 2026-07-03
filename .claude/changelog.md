@@ -44,6 +44,23 @@ This ensures transparency and traceability for all AI-executed workflows.
 
 ---
 
+## [0.2.3] - 2026-07-03
+
+### Security
+- **Dashboard password set** — replaced the shipped `change-me` default in `.env` with a real secret; all existing login cookies invalidated automatically (Closes: `mission_control-b2q`)
+- **PostgreSQL bound to loopback** — `docker-compose.yml` now publishes `127.0.0.1:5432` instead of `0.0.0.0:5432`; the DB was previously reachable (with default credentials) by every device on the LAN. Collectors only ever talk to the backend over HTTP, so nothing else changes (Closes: `mission_control-d9k`)
+- **Login rate limiting** — `POST /api/login` now locks an IP out for 15 minutes after 10 failed attempts (in-memory, Node built-ins only, `lib/auth.js`) (Closes: `mission_control-h3a`)
+
+### Added
+- **LAN URLs at startup** — the server now prints every address it is reachable at (`localhost`, `<hostname>.local`, and each non-internal IPv4) instead of the non-navigable `0.0.0.0` (Closes: `mission_control-yyl`)
+- **Home network setup guide** — new `docs/home-network.md` covering host setup, device registration, collector configuration, dashboard login, security notes, and troubleshooting; linked from the README intro (Closes: `mission_control-pp9`)
+
+### Changed
+- `package.json` version synced to `0.2.3` (was lagging at `0.2.0`)
+- `security.md` threat model updated with the rate-limiting and loopback-Postgres mitigations
+
+---
+
 ## [0.2.2] - 2026-06-12
 
 ### Added

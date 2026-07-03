@@ -10,7 +10,9 @@ services:
       POSTGRES_PASSWORD: mission
       POSTGRES_DB: mission_control
     ports:
-      - "5432:5432"
+      # Loopback only: collectors talk to the backend over HTTP, never to
+      # Postgres directly, so the DB must not be reachable from the LAN.
+      - "127.0.0.1:5432:5432"
     volumes:
       - mc_pgdata:/var/lib/postgresql/data
     healthcheck:

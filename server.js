@@ -760,6 +760,28 @@ end tell
 // ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
+
+/** Logs every URL the dashboard is reachable at, so other LAN devices know what to type. */
+function logListening(proto, port) {
+  const urls = [`${proto}://localhost:${port}`];
+  const hostname = os.hostname();
+  if (hostname) {
+    const local = hostname.endsWith('.local') ? hostname : `${hostname.replace(/\.$/, '')}.local`;
+    urls.push(`${proto}://${local.toLowerCase()}:${port}`);
+  }
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const iface of ifaces || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        urls.push(`${proto}://${iface.address}:${port}`);
+      }
+    }
+  }
+  console.log('MISSION-CONTROL running. Open on this device:');
+  console.log(`  ${urls[0]}`);
+  console.log('Reachable from other devices on your network:');
+  for (const url of urls.slice(1)) console.log(`  ${url}`);
+}
+
 async function main() {
   const config = await loadConfig();
   await migrate(); // ensure schema exists
@@ -780,13 +802,9 @@ async function main() {
       process.exit(1);
     }
     const { createServer } = await import('node:https');
-    createServer({ cert, key }, app).listen(port, () => {
-      console.log(`MISSION-CONTROL running on https://0.0.0.0:${port} (reachable on your LAN)`);
-    });
+    createServer({ cert, key }, app).listen(port, () => logListening('https', port));
   } else {
-    app.listen(port, () => {
-      console.log(`MISSION-CONTROL running on http://0.0.0.0:${port} (reachable on your LAN)`);
-    });
+    app.listen(port, () => logListening('http', port));
   }
 }
 

@@ -2,6 +2,8 @@
 
 A self-hosted dashboard for monitoring your Claude Code usage — sessions, costs, token breakdowns, and toolkit inventory — across all your projects.
 
+Runs on one host machine and aggregates data from every device on your home network. See **[docs/home-network.md](docs/home-network.md)** for the multi-device setup guide (host, per-device collectors, and dashboard login).
+
 ## Screenshots
 
 ### Sessions

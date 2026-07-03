@@ -41,7 +41,7 @@ Because the backend listens on the LAN (`0.0.0.0:9000`), anyone on the same netw
   - All read endpoints require a valid dashboard cookie. The static SPA shell is served openly (it contains no data); the data behind it is gated.
   - `POST /api/restore/:id` is **host-only** — it launches a terminal via `osascript` and is rejected for sessions not owned by the `is_host` device.
 
-**Threat model (LAN):** the listener is intentionally network-reachable. Mitigations: hashed device keys (a stolen DB reveals no usable keys), signed cookies (cannot be forged without the secret), no anonymous reads, and least-privilege ingest. Out of scope: a hostile actor already on your LAN performing traffic interception (the LAN link is plain HTTP) — run behind a trusted network, or front with TLS if needed.
+**Threat model (LAN):** the listener is intentionally network-reachable. Mitigations: hashed device keys (a stolen DB reveals no usable keys), signed cookies (cannot be forged without the secret), no anonymous reads, least-privilege ingest, per-IP login rate limiting (10 failures → 15-minute lockout, `lib/auth.js`), and PostgreSQL bound to loopback only (`127.0.0.1:5432` in `docker-compose.yml` — the DB is never LAN-reachable). Out of scope: a hostile actor already on your LAN performing traffic interception (the LAN link is plain HTTP) — run behind a trusted network, or front with TLS if needed.
 
 ---
 
